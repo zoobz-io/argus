@@ -19,10 +19,10 @@ import (
 
     "github.com/zoobzio/rocco"
     "github.com/zoobzio/sum"
-    "github.com/zoobzio/sumatra/admin/contracts"
-    "github.com/zoobzio/sumatra/admin/handlers"
-    "github.com/zoobzio/sumatra/admin/stores"
-    "github.com/zoobzio/sumatra/config"
+    "github.com/zoobzio/argus/admin/contracts"
+    "github.com/zoobzio/argus/admin/handlers"
+    "github.com/zoobzio/argus/admin/stores"
+    "github.com/zoobzio/argus/config"
 )
 
 func main() {

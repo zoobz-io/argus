@@ -1,4 +1,4 @@
-module github.com/zoobzio/sumatra
+module github.com/zoobzio/argus
 
 go 1.25.0
 

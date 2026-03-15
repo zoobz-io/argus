@@ -2,7 +2,7 @@
 
 .DEFAULT_GOAL := help
 
-APP_NAME := sumatra
+APP_NAME := argus
 BIN_DIR := bin
 
 help: ## Display available commands

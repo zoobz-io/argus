@@ -1,97 +1,82 @@
-# Sumatra
+# Argus
 
-A template repository for building Go applications with the zoobzio framework.
+Multi-tenant document ingestion platform. Connects to cloud storage providers, watches for changes, and builds a searchable knowledge base with versioning, content extraction, AI summaries, and vector embeddings.
 
-## Overview
+## What It Does
 
-Sumatra provides a production-ready project structure built on [sum](https://github.com/zoobzio/sum), following patterns established in real-world applications. It includes:
+1. **Watch** — Connects to cloud storage providers via [flux](https://github.com/zoobzio/flux) and monitors files the tenant has registered for observation
+2. **Extract** — Pulls document content using format-specific extractors; delegates OCR to a Tesseract sidecar over gRPC for scanned/handwritten documents
+3. **Version** — Tracks every revision of every document, maintaining a complete history
+4. **Enrich** — Generates AI summaries via [zyn](https://github.com/zoobzio/zyn) and vector embeddings via [vex](https://github.com/zoobzio/vex) for each document version
+5. **Index** — Stores extracted content, summaries, and embeddings in OpenSearch, providing full-text and semantic search across all ingested documents for a given tenant
 
-- Type-safe service registry via sum
-- HTTP server with OpenAPI support via rocco
-- Database access patterns via grub/astql
-- Configuration management via fig
-- Event system via capitan
-- Comprehensive testing infrastructure
+## Storage Providers
 
-## Project Structure
+Each provider implements a common interface and is developed independently:
 
-```
-sumatra/
-├── cmd/app/          # Application entrypoint
-├── config/           # Configuration types
-├── contracts/        # Interface definitions
-├── models/           # Domain models
-├── stores/           # Data access implementations
-├── handlers/         # HTTP handlers
-├── wire/             # Request/response types
-├── transformers/     # Model ↔ Wire mapping
-├── events/           # Event definitions
-├── testing/          # Test infrastructure
-├── internal/otel/    # OpenTelemetry setup
-├── migrations/       # SQL migrations
-└── .github/workflows # CI/CD
-```
+- Google Drive
+- OneDrive / SharePoint
+- Dropbox
+- Amazon S3
+- Google Cloud Storage
+- Azure Blob Storage
 
-Each directory contains a README explaining its purpose and usage patterns.
+## Supported Document Types
 
-## Getting Started
-
-```bash
-# Install dependencies
-go mod tidy
-
-# Run the application
-make run
-
-# Run tests
-make test
-
-# Run linter
-make lint
-
-# Full CI check
-make check
-```
-
-## Development
-
-### Prerequisites
-
-- Go 1.24+
-- golangci-lint v2.7.2
-
-### Install Tools
-
-```bash
-make install-tools
-make install-hooks
-```
-
-### Make Commands
-
-| Command | Description |
-|---------|-------------|
-| `make build` | Build the application binary |
-| `make run` | Run the application |
-| `make test` | Run all tests with race detector |
-| `make test-unit` | Run unit tests only |
-| `make test-integration` | Run integration tests |
-| `make test-bench` | Run benchmarks |
-| `make lint` | Run linters |
-| `make coverage` | Generate coverage report |
-| `make check` | Run tests + lint |
-| `make ci` | Full CI simulation |
+| Category | Formats |
+|----------|---------|
+| Documents | PDF, DOCX, DOC, ODT, RTF, TXT, Markdown |
+| Spreadsheets | XLSX, XLS, CSV, ODS |
+| Presentations | PPTX, PPT, ODP |
+| Images (OCR) | PNG, JPEG, TIFF, BMP, WebP |
+| Scanned Documents | PDF (image-only), multi-page TIFF |
 
 ## Architecture
 
-The application follows a layered architecture with clear dependency rules:
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Provider   │────▶│   Ingestion  │────▶│  Enrichment  │
+│   Watchers   │     │   Pipeline   │     │   Pipeline   │
+│  (flux)      │     │              │     │  (zyn + vex) │
+└──────────────┘     └──────┬───────┘     └──────┬───────┘
+                            │                    │
+                     ┌──────▼───────┐     ┌──────▼───────┐
+                     │   Tesseract  │     │  OpenSearch   │
+                     │   Sidecar    │     │   Cluster     │
+                     │   (gRPC)     │     │              │
+                     └──────────────┘     └──────────────┘
+```
 
-1. **contracts** - Define interfaces, depend only on models
-2. **models** - Domain models, no internal dependencies
-3. **stores** - Implement contracts, depend on models
-4. **handlers** - HTTP layer, depend on contracts/wire/transformers
-5. **wire** - API types, depend on models (for transformation)
-6. **transformers** - Pure mapping functions between models and wire
+- **Provider Watchers** — flux capacitors monitor registered files/folders across cloud storage providers
+- **Ingestion Pipeline** — Extracts content, normalises formats, manages document versions; delegates OCR to a Tesseract sidecar via gRPC
+- **Enrichment Pipeline** — Generates AI summaries (zyn) and vector embeddings (vex) per document version
+- **OpenSearch** — Full-text and semantic search index per tenant
+
+The system is designed for horizontal scalability from day one — pipelines are queue-driven and stateless, allowing independent scaling of ingestion, OCR, and enrichment workloads.
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Language | Go |
+| Framework | [sum](https://github.com/zoobzio/sum) |
+| Configuration | [flux](https://github.com/zoobzio/flux) |
+| LLM Orchestration | [zyn](https://github.com/zoobzio/zyn) |
+| Embeddings | [vex](https://github.com/zoobzio/vex) |
+| OCR | Tesseract (gRPC sidecar) |
+| Search & Storage | OpenSearch |
+| Database | PostgreSQL |
+| Object Storage | MinIO (dev) / S3-compatible (prod) |
+| Observability | OpenTelemetry |
+
+## Development
+
+```bash
+make dev        # Start local infrastructure
+make run        # Run the application
+make test       # Run tests
+make check      # Run tests + lint
+```
 
 ## License
 
