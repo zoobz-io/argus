@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package argus.ocr.v1;
+
+option go_package = "github.com/zoobz-io/argus/proto;proto";
+
+service OCRService {
+  // ExtractText performs OCR on the provided document bytes.
+  rpc ExtractText(ExtractTextRequest) returns (ExtractTextResponse);
+}
+
+message ExtractTextRequest {
+  // Raw document bytes.
+  bytes document = 1;
+  // MIME type of the document (e.g., "image/png", "application/pdf").
+  string mime_type = 2;
+  // BCP-47 language hint (e.g., "eng"). Optional.
+  string language = 3;
+}
+
+message ExtractTextResponse {
+  // Extracted text content.
+  string text = 1;
+  // OCR confidence score (0.0 to 1.0).
+  float confidence = 2;
+  // Number of pages processed.
+  int32 pages = 3;
+}

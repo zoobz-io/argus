@@ -60,6 +60,34 @@ services:
       timeout: 5s
       retries: 5
 
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearchdata:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  ocr:
+    build:
+      context: ./tools/ocr
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD", "/bin/grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # =============================================================================
   # Observability Stack
   # =============================================================================
@@ -136,6 +164,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      ocr:
+        condition: service_healthy
     environment:
       APP_PORT: "8080"
       APP_DB_HOST: postgres
@@ -150,6 +182,8 @@ services:
       APP_STORAGE_SECRET_KEY: argusdev
       APP_STORAGE_BUCKET: argus
       APP_STORAGE_USE_SSL: "false"
+      APP_OPENSEARCH_ADDR: http://opensearch:9200
+      APP_OCR_ADDR: ocr:50051
       APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: argus
@@ -162,6 +196,7 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
+  opensearchdata:
   lokidata:
   prometheusdata:
   grafanadata:
