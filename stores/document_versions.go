@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/zoobz-io/astql"
+	"github.com/zoobz-io/grub"
 	"github.com/zoobz-io/sum"
 	"github.com/zoobz-io/argus/models"
 )
@@ -13,15 +14,16 @@ import (
 // DocumentVersions provides database access for document versions.
 type DocumentVersions struct {
 	*sum.Database[models.DocumentVersion]
+	bucket grub.BucketProvider
 }
 
 // NewDocumentVersions creates a new document versions store.
-func NewDocumentVersions(db *sqlx.DB, renderer astql.Renderer) (*DocumentVersions, error) {
+func NewDocumentVersions(db *sqlx.DB, renderer astql.Renderer, bucket grub.BucketProvider) (*DocumentVersions, error) {
 	database, err := sum.NewDatabase[models.DocumentVersion](db, "document_versions", renderer)
 	if err != nil {
 		return nil, err
 	}
-	return &DocumentVersions{Database: database}, nil
+	return &DocumentVersions{Database: database, bucket: bucket}, nil
 }
 
 // GetDocumentVersion retrieves a document version by ID.
@@ -50,6 +52,24 @@ func (s *DocumentVersions) ListDocumentVersions(ctx context.Context, page models
 		return nil, err
 	}
 	return cursorResult(items, limit), nil
+}
+
+// GetVersionContent retrieves the raw bytes for a document version from object storage.
+func (s *DocumentVersions) GetVersionContent(ctx context.Context, objectKey string) ([]byte, error) {
+	data, _, err := s.bucket.Get(ctx, objectKey)
+	if err != nil {
+		return nil, fmt.Errorf("fetching object %s: %w", objectKey, err)
+	}
+	return data, nil
+}
+
+// UpdateExtractionStatus updates the extraction status for a document version.
+func (s *DocumentVersions) UpdateExtractionStatus(ctx context.Context, id int64, status models.ExtractionStatus) error {
+	_, err := s.Modify().
+		Set("extraction_status", ":status").
+		Where("id", "=", ":id").
+		Exec(ctx, map[string]any{"id": id, "status": string(status)})
+	return err
 }
 
 // ListVersionsByDocument retrieves versions for a specific document using cursor pagination.

@@ -19,7 +19,7 @@ type Stores struct {
 }
 
 // New initializes all stores and returns an aggregated Stores instance.
-func New(db *sqlx.DB, renderer astql.Renderer, searchProvider grub.SearchProvider) (*Stores, error) {
+func New(db *sqlx.DB, renderer astql.Renderer, bucket grub.BucketProvider, searchProvider grub.SearchProvider) (*Stores, error) {
 	tenants, err := NewTenants(db, renderer)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func New(db *sqlx.DB, renderer astql.Renderer, searchProvider grub.SearchProvide
 		return nil, err
 	}
 
-	documentVersions, err := NewDocumentVersions(db, renderer)
+	documentVersions, err := NewDocumentVersions(db, renderer, bucket)
 	if err != nil {
 		return nil, err
 	}

@@ -1,14 +1,14 @@
 package handlers
 
 import (
-	"log"
-
+	"github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/rocco"
+	"github.com/zoobz-io/sum"
 )
 
 // IngestRequest is the request body for triggering manual ingestion.
 type IngestRequest struct {
-	DocumentID int64 `json:"document_id" description:"Document to ingest" example:"1"`
+	VersionID int64 `json:"version_id" description:"Document version to ingest" example:"1"`
 }
 
 // Clone returns a copy of the request.
@@ -27,8 +27,11 @@ func (r IngestResponse) Clone() IngestResponse {
 }
 
 var triggerIngest = rocco.POST[IngestRequest, IngestResponse]("/ingest", func(r *rocco.Request[IngestRequest]) (IngestResponse, error) {
-	log.Printf("manual ingestion triggered for document_id=%d", r.Body.DocumentID)
-	return IngestResponse{Message: "ingestion triggered"}, nil
+	pipeline := sum.MustUse[contracts.Ingest](r)
+	if err := pipeline.Ingest(r, r.Body.VersionID); err != nil {
+		return IngestResponse{}, err
+	}
+	return IngestResponse{Message: "ingestion completed"}, nil
 }).
 	WithSummary("Trigger manual ingestion").
 	WithTags("ingestion").

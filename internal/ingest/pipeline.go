@@ -8,62 +8,90 @@ package ingest
 import (
 	"context"
 	"fmt"
-	"log"
 
+	"github.com/zoobz-io/capitan"
+	"github.com/zoobz-io/pipz"
+	"github.com/zoobz-io/sum"
+
+	"github.com/zoobz-io/argus/events"
+	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/models"
 )
 
-// DocumentStore defines the store operations needed by the ingestion pipeline.
-type DocumentStore interface {
-	GetDocumentVersion(ctx context.Context, id int64) (*models.DocumentVersion, error)
-}
-
-// SearchIndex defines the search index operations needed by the ingestion pipeline.
-type SearchIndex interface {
-	IndexVersion(ctx context.Context, version *models.DocumentVersionIndex) error
-}
+// Stage identities for pipeline introspection and resolution.
+var (
+	PipelineID      = pipz.NewIdentity("ingest-pipeline", "Document ingestion pipeline")
+	ExtractID       = pipz.NewIdentity("extract", "Extract text content from stored object")
+	FetchID         = pipz.NewIdentity("extract-fetch", "Fetch raw bytes from object storage")
+	ExtractRouterID = pipz.NewIdentity("extract-router", "Route to format-specific extractor by MIME type")
+	ExtractSignalID = pipz.NewIdentity("extract-signal", "Emit extraction completed signal")
+	SummarizeID     = pipz.NewIdentity("summarize", "Summarize extracted content via LLM")
+	EmbedID         = pipz.NewIdentity("embed", "Generate embedding vector for content")
+	IndexID         = pipz.NewIdentity("index", "Index document version in search")
+)
 
 // Pipeline orchestrates document ingestion through extraction, summarization,
 // embedding, and indexing stages.
 type Pipeline struct {
-	documents DocumentStore
-	search    SearchIndex
+	sequence *pipz.Sequence[*DocumentContext]
 }
 
 // New creates a new ingestion pipeline.
-func New(documents DocumentStore, search SearchIndex) *Pipeline {
-	return &Pipeline{
-		documents: documents,
-		search:    search,
-	}
+func New() *Pipeline {
+	seq := pipz.NewSequence(
+		PipelineID,
+		newExtractStage(),
+		newSummarizeStage(),
+		newEmbedStage(),
+		newIndexStage(),
+	)
+
+	return &Pipeline{sequence: seq}
 }
 
 // Ingest processes a document version through the full ingestion pipeline.
-// This is a stub — stages will be implemented as pipz processors.
 func (p *Pipeline) Ingest(ctx context.Context, versionID int64) error {
-	version, err := p.documents.GetDocumentVersion(ctx, versionID)
+	versions := sum.MustUse[intcontracts.IngestVersions](ctx)
+	documents := sum.MustUse[intcontracts.IngestDocuments](ctx)
+
+	version, err := versions.GetDocumentVersion(ctx, versionID)
 	if err != nil {
 		return fmt.Errorf("fetching document version: %w", err)
 	}
 
-	log.Printf("ingest: starting pipeline for version_id=%d document_id=%d", version.ID, version.DocumentID)
+	document, err := documents.GetDocument(ctx, version.DocumentID)
+	if err != nil {
+		return fmt.Errorf("fetching document: %w", err)
+	}
 
-	// Stage 1: Extract text content from the stored object.
-	// TODO: Implement using pipz processor + OCR gRPC client.
-	log.Printf("ingest: [stub] extract text from object_key=%s", version.ObjectKey)
+	if statusErr := versions.UpdateExtractionStatus(ctx, versionID, models.ExtractionProcessing); statusErr != nil {
+		return fmt.Errorf("setting status to processing: %w", statusErr)
+	}
 
-	// Stage 2: Summarize extracted content.
-	// TODO: Implement using pipz processor + LLM via zyn.
-	log.Printf("ingest: [stub] summarize content")
+	capitan.Info(ctx, events.IngestStarted,
+		events.IngestVersionIDKey.Field(version.ID),
+		events.IngestDocumentIDKey.Field(version.DocumentID),
+		events.IngestMimeTypeKey.Field(document.MimeType),
+	)
 
-	// Stage 3: Generate embedding vector.
-	// TODO: Implement using pipz processor + vex embedding provider.
-	log.Printf("ingest: [stub] generate embedding")
+	dc := &DocumentContext{
+		Version:  version,
+		Document: document,
+	}
 
-	// Stage 4: Index the document version in OpenSearch.
-	// TODO: Build DocumentVersionIndex from extracted data and index it.
-	log.Printf("ingest: [stub] index version in search")
+	_, err = p.sequence.Process(ctx, dc)
+	if err != nil {
+		_ = versions.UpdateExtractionStatus(ctx, versionID, models.ExtractionFailed)
+		capitan.Error(ctx, events.IngestFailed,
+			events.IngestVersionIDKey.Field(version.ID),
+			events.IngestErrorKey.Field(err),
+		)
+		return fmt.Errorf("pipeline failed: %w", err)
+	}
 
-	log.Printf("ingest: pipeline complete for version_id=%d", version.ID)
+	capitan.Info(ctx, events.IngestCompleted,
+		events.IngestVersionIDKey.Field(version.ID),
+		events.IngestDocumentIDKey.Field(version.DocumentID),
+	)
 	return nil
 }

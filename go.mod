@@ -10,6 +10,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v4 v4.3.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/zoobz-io/aperture v1.0.3
+	github.com/zoobz-io/argus/proto v0.0.0-20260324042205-707100498d41
 	github.com/zoobz-io/astql v1.0.7
 	github.com/zoobz-io/capitan v1.0.2
 	github.com/zoobz-io/check v0.0.5
@@ -19,8 +20,12 @@ require (
 	github.com/zoobz-io/grub/postgres v0.1.11
 	github.com/zoobz-io/grub/redis v0.1.11
 	github.com/zoobz-io/lucene v0.0.2
+	github.com/zoobz-io/pipz v1.0.5
 	github.com/zoobz-io/rocco v0.1.16
 	github.com/zoobz-io/sum v0.0.10
+	github.com/zoobz-io/vex v0.0.2
+	github.com/zoobz-io/zyn v1.0.2
+	github.com/zoobz-io/zyn/openai v0.0.0-20260320210919-408cce8f5047
 	go.opentelemetry.io/otel v1.42.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.14.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.38.0
@@ -55,6 +60,7 @@ require (
 	github.com/tinylib/msgp v1.6.1 // indirect
 	github.com/zoobz-io/atom v1.0.1 // indirect
 	github.com/zoobz-io/cereal v0.1.2 // indirect
+	github.com/zoobz-io/clockz v1.0.2 // indirect
 	github.com/zoobz-io/dbml v1.0.1 // indirect
 	github.com/zoobz-io/edamame v1.0.2 // indirect
 	github.com/zoobz-io/fig v0.0.3 // indirect

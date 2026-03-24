@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/minio/minio-go/v7"
@@ -20,6 +21,10 @@ import (
 	grubredis "github.com/zoobz-io/grub/redis"
 	osrenderer "github.com/zoobz-io/lucene/opensearch"
 	"github.com/zoobz-io/sum"
+	"github.com/zoobz-io/vex"
+	vexopenai "github.com/zoobz-io/vex/openai"
+	zynopenai "github.com/zoobz-io/zyn/openai"
+	"github.com/zoobz-io/zyn"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -30,9 +35,11 @@ import (
 	"github.com/zoobz-io/argus/api/wire"
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
+	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/ingest"
 	intotel "github.com/zoobz-io/argus/internal/otel"
 	"github.com/zoobz-io/argus/models"
+	"github.com/zoobz-io/argus/proto"
 	"github.com/zoobz-io/argus/stores"
 
 	_ "github.com/zoobz-io/grub/postgres"
@@ -77,6 +84,12 @@ func run() error {
 	if err := sum.Config[config.Encryption](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load encryption config: %w", err)
 	}
+	if err := sum.Config[config.LLM](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load llm config: %w", err)
+	}
+	if err := sum.Config[config.Embedding](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load embedding config: %w", err)
+	}
 
 	// =========================================================================
 	// 2. Connect to Infrastructure
@@ -102,7 +115,6 @@ func run() error {
 		return fmt.Errorf("failed to connect to storage: %w", err)
 	}
 	bucketProvider := grubminio.New(minioClient, storageCfg.Bucket)
-	_ = bucketProvider // Used by future stores for raw document storage.
 	log.Println("storage connected")
 	capitan.Emit(ctx, events.StartupStorageConnected)
 
@@ -143,9 +155,53 @@ func run() error {
 		return fmt.Errorf("failed to connect to ocr service: %w", err)
 	}
 	defer func() { _ = ocrConn.Close() }()
-	_ = ocrConn // OCR client will be created from this connection.
+	ocrClient := proto.NewOCRServiceClient(ocrConn)
 	log.Println("ocr service connected")
 	capitan.Emit(ctx, events.StartupOCRConnected)
+
+	// LLM (zyn)
+	llmCfg := sum.MustUse[config.LLM](ctx)
+	llmProvider := zynopenai.New(zynopenai.Config{
+		APIKey:  llmCfg.APIKey,
+		Model:   llmCfg.Model,
+		BaseURL: llmCfg.BaseURL,
+	})
+	summarySynapse, err := zyn.Transform(
+		"Summarize the following document content into a concise paragraph that captures the key points and themes.",
+		llmProvider,
+		zyn.WithRetry(3),
+		zyn.WithTimeout(60*time.Second),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create summary synapse: %w", err)
+	}
+	summarizer := ingest.NewSynapseSummarizer(summarySynapse)
+
+	extractionSynapse, err := zyn.Transform(
+		"Extract and return the readable text content from the following raw document data. Preserve structure (paragraphs, headings, lists, tables) as plain text. Remove markup, control codes, and formatting artifacts.",
+		llmProvider,
+		zyn.WithRetry(3),
+		zyn.WithTimeout(60*time.Second),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create extraction synapse: %w", err)
+	}
+	textExtractor := ingest.NewSynapseExtractor(extractionSynapse)
+	log.Println("llm provider initialized")
+
+	// Embeddings (vex)
+	embeddingCfg := sum.MustUse[config.Embedding](ctx)
+	embeddingProvider := vexopenai.New(vexopenai.Config{
+		APIKey:     embeddingCfg.APIKey,
+		Model:      embeddingCfg.Model,
+		BaseURL:    embeddingCfg.BaseURL,
+		Dimensions: embeddingCfg.Dimensions,
+	})
+	embedService := vex.NewService(embeddingProvider,
+		vex.WithRetry(3),
+		vex.WithTimeout(30*time.Second),
+	)
+	log.Println("embedding provider initialized")
 
 	// =========================================================================
 	// 3. Create and Register Stores
@@ -153,11 +209,12 @@ func run() error {
 
 	renderer := astqlpg.New()
 
-	allStores, err := stores.New(db, renderer, searchProvider)
+	allStores, err := stores.New(db, renderer, bucketProvider, searchProvider)
 	if err != nil {
 		return fmt.Errorf("failed to create stores: %w", err)
 	}
 
+	// Public API contracts
 	sum.Register[apicontracts.Tenants](k, allStores.Tenants)
 	sum.Register[apicontracts.Providers](k, allStores.Providers)
 	sum.Register[apicontracts.WatchedPaths](k, allStores.WatchedPaths)
@@ -165,12 +222,26 @@ func run() error {
 	sum.Register[apicontracts.DocumentVersions](k, allStores.DocumentVersions)
 	sum.Register[apicontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
 
+	// Admin API contracts
 	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
 	sum.Register[admincontracts.Providers](k, allStores.Providers)
 	sum.Register[admincontracts.WatchedPaths](k, allStores.WatchedPaths)
 	sum.Register[admincontracts.Documents](k, allStores.Documents)
 	sum.Register[admincontracts.DocumentVersions](k, allStores.DocumentVersions)
 	sum.Register[admincontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
+
+	// Internal contracts (ingestion pipeline)
+	sum.Register[intcontracts.IngestVersions](k, allStores.DocumentVersions)
+	sum.Register[intcontracts.IngestDocuments](k, allStores.Documents)
+	sum.Register[intcontracts.IngestSearch](k, allStores.DocumentVersionSearch)
+	sum.Register[intcontracts.OCR](k, ocrClient)
+	sum.Register[intcontracts.Summarizer](k, summarizer)
+	sum.Register[intcontracts.TextExtractor](k, textExtractor)
+	sum.Register[intcontracts.Embedder](k, embedService)
+
+	// Pipeline contract (public API)
+	pipeline := ingest.New()
+	sum.Register[apicontracts.Ingest](k, pipeline)
 
 	// =========================================================================
 	// 4. Register Boundaries
@@ -249,18 +320,11 @@ func run() error {
 	capitan.Emit(ctx, events.StartupApertureReady)
 
 	// =========================================================================
-	// 7. Register Handlers and Run
+	// 7. Initialize Pipeline and Register Handlers
 	// =========================================================================
 
 	svc.Handle(handlers.All()...)
 	svc.Handle(adminhandlers.All()...)
-
-	// =========================================================================
-	// 8. Initialize Ingestion Pipeline
-	// =========================================================================
-
-	pipeline := ingest.New(allStores.DocumentVersions, allStores.DocumentVersionSearch)
-	_ = pipeline // Pipeline will be invoked by the ingest handler once wired.
 
 	appCfg := sum.MustUse[config.App](ctx)
 	capitan.Emit(ctx, events.StartupServerListening, events.StartupPortKey.Field(appCfg.Port))
