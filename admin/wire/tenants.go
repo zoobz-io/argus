@@ -18,10 +18,10 @@ func (t AdminTenantResponse) Clone() AdminTenantResponse {
 
 // AdminTenantListResponse is the wire representation of a paginated tenant list.
 type AdminTenantListResponse struct {
+	Cursor  *int64                `json:"cursor,omitempty" description:"Cursor for next page (last ID in this page)"`
 	Tenants []AdminTenantResponse `json:"tenants" description:"List of tenants"`
-	Total   int                   `json:"total" description:"Total matching tenants"`
-	Limit   int                   `json:"limit" description:"Page size"`
-	Offset  int                   `json:"offset" description:"Page offset"`
+	Limit   int                   `json:"limit" description:"Page size" example:"20"`
+	HasMore bool                  `json:"has_more" description:"Whether more results exist"`
 }
 
 // Clone returns a deep copy of the response.
@@ -30,6 +30,10 @@ func (r AdminTenantListResponse) Clone() AdminTenantListResponse {
 	if r.Tenants != nil {
 		c.Tenants = make([]AdminTenantResponse, len(r.Tenants))
 		copy(c.Tenants, r.Tenants)
+	}
+	if r.Cursor != nil {
+		v := *r.Cursor
+		c.Cursor = &v
 	}
 	return c
 }

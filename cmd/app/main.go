@@ -23,11 +23,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	admincontracts "github.com/zoobz-io/argus/admin/contracts"
+	adminhandlers "github.com/zoobz-io/argus/admin/handlers"
 	apicontracts "github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/argus/api/handlers"
 	"github.com/zoobz-io/argus/api/wire"
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
+	"github.com/zoobz-io/argus/internal/ingest"
 	intotel "github.com/zoobz-io/argus/internal/otel"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/stores"
@@ -162,6 +165,13 @@ func run() error {
 	sum.Register[apicontracts.DocumentVersions](k, allStores.DocumentVersions)
 	sum.Register[apicontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
 
+	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
+	sum.Register[admincontracts.Providers](k, allStores.Providers)
+	sum.Register[admincontracts.WatchedPaths](k, allStores.WatchedPaths)
+	sum.Register[admincontracts.Documents](k, allStores.Documents)
+	sum.Register[admincontracts.DocumentVersions](k, allStores.DocumentVersions)
+	sum.Register[admincontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
+
 	// =========================================================================
 	// 4. Register Boundaries
 	// =========================================================================
@@ -243,6 +253,14 @@ func run() error {
 	// =========================================================================
 
 	svc.Handle(handlers.All()...)
+	svc.Handle(adminhandlers.All()...)
+
+	// =========================================================================
+	// 8. Initialize Ingestion Pipeline
+	// =========================================================================
+
+	pipeline := ingest.New(allStores.DocumentVersions, allStores.DocumentVersionSearch)
+	_ = pipeline // Pipeline will be invoked by the ingest handler once wired.
 
 	appCfg := sum.MustUse[config.App](ctx)
 	capitan.Emit(ctx, events.StartupServerListening, events.StartupPortKey.Field(appCfg.Port))

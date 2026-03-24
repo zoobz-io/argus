@@ -18,16 +18,16 @@ func WatchedPathToAdminResponse(w *models.WatchedPath) wire.AdminWatchedPathResp
 	}
 }
 
-// WatchedPathsToAdminList converts a slice of watched path models to a paginated admin list response.
-func WatchedPathsToAdminList(paths []*models.WatchedPath, total, limit, offset int) wire.AdminWatchedPathListResponse {
-	items := make([]wire.AdminWatchedPathResponse, len(paths))
-	for i, w := range paths {
+// WatchedPathsToAdminList converts a cursor result of watched paths to an admin list response.
+func WatchedPathsToAdminList(result *models.CursorResult[models.WatchedPath], limit int) wire.AdminWatchedPathListResponse {
+	items := make([]wire.AdminWatchedPathResponse, len(result.Items))
+	for i, w := range result.Items {
 		items[i] = WatchedPathToAdminResponse(w)
 	}
 	return wire.AdminWatchedPathListResponse{
 		WatchedPaths: items,
-		Total:        total,
+		Cursor:       result.Cursor,
 		Limit:        limit,
-		Offset:       offset,
+		HasMore:      result.HasMore,
 	}
 }

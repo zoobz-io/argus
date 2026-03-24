@@ -9,7 +9,7 @@ Define HTTP endpoints using rocco's handler pattern. Handlers are the entry poin
 ## Pattern
 
 ```go
-// handlers/users.go
+// handlers/providers.go
 package handlers
 
 import (
@@ -17,41 +17,44 @@ import (
     "github.com/zoobzio/sum"
     "github.com/zoobzio/argus/api/contracts"
     "github.com/zoobzio/argus/api/transformers"
-    "github.com/zoobzio/argus/wire"
+    "github.com/zoobzio/argus/api/wire"
 )
 
-var GetMe = rocco.GET("/me", func(req *rocco.Request[rocco.NoBody]) (wire.UserResponse, error) {
-    users := sum.MustUse[contracts.Users](req.Context)
-
-    user, err := users.Get(req.Context, req.Identity.ID())
+var getProvider = rocco.GET[rocco.NoBody, wire.ProviderResponse]("/providers/{id}", func(r *rocco.Request[rocco.NoBody]) (wire.ProviderResponse, error) {
+    id, err := pathID(r.Params, "id")
     if err != nil {
-        return wire.UserResponse{}, err
+        return wire.ProviderResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
     }
-
-    return transformers.UserToResponse(user), nil
-}).WithSummary("Get current user").
-   WithDescription("Returns the authenticated user's profile.").
-   WithTags("Users").
-   WithAuthentication()
-
-var UpdateMe = rocco.PATCH("/me", func(req *rocco.Request[wire.UserUpdateRequest]) (wire.UserResponse, error) {
-    users := sum.MustUse[contracts.Users](req.Context)
-
-    user, err := users.Get(req.Context, req.Identity.ID())
+    store := sum.MustUse[contracts.Providers](r)
+    provider, err := store.GetProvider(r, id)
     if err != nil {
-        return wire.UserResponse{}, err
+        return wire.ProviderResponse{}, ErrProviderNotFound
     }
+    return transformers.ProviderToResponse(provider), nil
+}).
+    WithSummary("Get provider").
+    WithTags("providers").
+    WithPathParams("id").
+    WithAuthentication().
+    WithErrors(ErrProviderNotFound)
 
-    transformers.ApplyUserUpdate(req.Body, user)
-
-    if err := users.Set(req.Context, req.Identity.ID(), user); err != nil {
-        return wire.UserResponse{}, err
+var createProvider = rocco.POST[wire.ProviderCreateRequest, wire.ProviderResponse]("/providers", func(r *rocco.Request[wire.ProviderCreateRequest]) (wire.ProviderResponse, error) {
+    tid, err := tenantID(r.Identity)
+    if err != nil {
+        return wire.ProviderResponse{}, rocco.ErrBadRequest.WithMessage("invalid tenant")
     }
-
-    return transformers.UserToResponse(user), nil
-}).WithSummary("Update current user").
-   WithTags("Users").
-   WithAuthentication()
+    store := sum.MustUse[contracts.Providers](r)
+    provider, err := store.CreateProvider(r, tid, r.Body.Type, r.Body.Name, r.Body.Credentials)
+    if err != nil {
+        return wire.ProviderResponse{}, err
+    }
+    return transformers.ProviderToResponse(provider), nil
+}).
+    WithSummary("Create provider").
+    WithTags("providers").
+    WithSuccessStatus(201).
+    WithAuthentication().
+    WithErrors(rocco.ErrValidationFailed)
 ```
 
 ## Handler Registration
@@ -128,9 +131,10 @@ var StreamProgress = rocco.NewStreamHandler[rocco.NoBody, wire.ProgressUpdate](
 
 - Handlers are module-level variables, not methods
 - Use `rocco.NoBody` for requests without a body
-- Retrieve contracts via `sum.MustUse[contracts.T](req.Context)`
-- Use transformers for model ↔ wire conversion
-- Keep handler logic minimal - orchestration only
+- Retrieve contracts via `sum.MustUse[contracts.T](r)` (r is `*rocco.Request` which embeds context)
+- Use transformers for model -> wire conversion
+- **Handlers are thin dispatchers** — parse params, call ONE contract method, transform result, return
+- Never construct models or build queries in handlers — that logic lives in stores
 - Define domain-specific errors in `errors.go`
 - Register all handlers in the `All()` function
 - For streams: always check `stream.Done()` for client disconnect

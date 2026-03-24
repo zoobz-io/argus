@@ -11,6 +11,11 @@ type Tenant struct {
 	ID        int64     `json:"id" db:"id" constraints:"primarykey"`
 }
 
+// GetID returns the tenant's primary key.
+func (t Tenant) GetID() int64 {
+	return t.ID
+}
+
 // Clone returns a copy of the tenant.
 func (t Tenant) Clone() Tenant {
 	return t

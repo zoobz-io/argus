@@ -28,10 +28,10 @@ func (d AdminDocumentResponse) Clone() AdminDocumentResponse {
 
 // AdminDocumentListResponse is the admin API response for listing documents.
 type AdminDocumentListResponse struct {
+	Cursor    *int64                  `json:"cursor,omitempty" description:"Cursor for next page (last ID in this page)"`
 	Documents []AdminDocumentResponse `json:"documents" description:"List of documents"`
-	Total     int                     `json:"total" description:"Total matching documents"`
-	Limit     int                     `json:"limit" description:"Page size"`
-	Offset    int                     `json:"offset" description:"Page offset"`
+	Limit     int                     `json:"limit" description:"Page size" example:"20"`
+	HasMore   bool                    `json:"has_more" description:"Whether more results exist"`
 }
 
 // Clone returns a deep copy of the list response.
@@ -42,6 +42,10 @@ func (r AdminDocumentListResponse) Clone() AdminDocumentListResponse {
 		for i, d := range r.Documents {
 			c.Documents[i] = d.Clone()
 		}
+	}
+	if r.Cursor != nil {
+		v := *r.Cursor
+		c.Cursor = &v
 	}
 	return c
 }

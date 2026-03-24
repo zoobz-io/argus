@@ -19,16 +19,16 @@ func DocumentVersionToAdminResponse(v *models.DocumentVersion) wire.AdminDocumen
 	}
 }
 
-// DocumentVersionsToAdminList converts a slice of document version models to a paginated admin list response.
-func DocumentVersionsToAdminList(versions []*models.DocumentVersion, total, limit, offset int) wire.AdminDocumentVersionListResponse {
-	items := make([]wire.AdminDocumentVersionResponse, len(versions))
-	for i, v := range versions {
+// DocumentVersionsToAdminList converts a cursor result of document versions to an admin list response.
+func DocumentVersionsToAdminList(result *models.CursorResult[models.DocumentVersion], limit int) wire.AdminDocumentVersionListResponse {
+	items := make([]wire.AdminDocumentVersionResponse, len(result.Items))
+	for i, v := range result.Items {
 		items[i] = DocumentVersionToAdminResponse(v)
 	}
 	return wire.AdminDocumentVersionListResponse{
 		Versions: items,
-		Total:    total,
+		Cursor:   result.Cursor,
 		Limit:    limit,
-		Offset:   offset,
+		HasMore:  result.HasMore,
 	}
 }

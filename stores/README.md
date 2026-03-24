@@ -14,36 +14,79 @@ The store implements all methods; each contract exposes only what that surface n
 
 ## Pattern
 
+Stores expose **domain methods** that encapsulate all business logic — model construction, fetch-then-update, query building, pagination. The embedded `*sum.Database` provides low-level access (`Select`, `Query`, `Set`, `Delete`) but these are only used internally by the store's methods, never exposed through contracts.
+
 ```go
-// stores/users.go
+// stores/providers.go
 package stores
 
 import (
     "context"
+    "fmt"
 
     "github.com/jmoiron/sqlx"
     "github.com/zoobzio/astql"
-    "github.com/zoobzio/sum"
+    "github.com/zoobz-io/sum"
     "github.com/zoobzio/argus/models"
 )
 
-type Users struct {
-    *sum.Database[models.User]
+type Providers struct {
+    *sum.Database[models.Provider]
 }
 
-func NewUsers(db *sqlx.DB, renderer astql.Renderer) (*Users, error) {
-    database, err := sum.NewDatabase[models.User](db, "users", renderer)
+func NewProviders(db *sqlx.DB, renderer astql.Renderer) (*Providers, error) {
+    database, err := sum.NewDatabase[models.Provider](db, "providers", renderer)
     if err != nil {
         return nil, err
     }
-    return &Users{Database: database}, nil
+    return &Providers{Database: database}, nil
 }
 
-// GetByLogin retrieves a user by their login name.
-func (s *Users) GetByLogin(ctx context.Context, login string) (*models.User, error) {
+// GetProvider retrieves a provider by ID.
+func (s *Providers) GetProvider(ctx context.Context, id int64) (*models.Provider, error) {
     return s.Select().
-        Where("login", "=", "login").
-        Exec(ctx, map[string]any{"login": login})
+        Where("id", "=", ":id").
+        Exec(ctx, map[string]any{"id": id})
+}
+
+// CreateProvider constructs and persists a new provider.
+func (s *Providers) CreateProvider(ctx context.Context, tenantID int64, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
+    p := &models.Provider{TenantID: tenantID, Type: providerType, Name: name, Credentials: credentials, Active: true}
+    if err := s.Set(ctx, "", p); err != nil {
+        return nil, fmt.Errorf("creating provider: %w", err)
+    }
+    return p, nil
+}
+
+// UpdateProvider fetches, mutates, and persists a provider.
+func (s *Providers) UpdateProvider(ctx context.Context, id int64, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
+    p, err := s.GetProvider(ctx, id)
+    if err != nil {
+        return nil, err
+    }
+    p.Type = providerType
+    p.Name = name
+    p.Credentials = credentials
+    if err := s.Set(ctx, fmt.Sprintf("%d", id), p); err != nil {
+        return nil, fmt.Errorf("updating provider: %w", err)
+    }
+    return p, nil
+}
+
+// ListProvidersByTenant returns providers for a tenant using cursor pagination.
+func (s *Providers) ListProvidersByTenant(ctx context.Context, tenantID int64, page models.CursorPage) (*models.CursorResult[models.Provider], error) {
+    limit := page.PageSize()
+    q := s.Query().Where("tenant_id", "=", ":tenant_id").OrderBy("id", "ASC").Limit(limit + 1)
+    params := map[string]any{"tenant_id": tenantID}
+    if page.Cursor != nil {
+        q = q.Where("id", ">", ":cursor")
+        params["cursor"] = *page.Cursor
+    }
+    items, err := q.Exec(ctx, params)
+    if err != nil {
+        return nil, err
+    }
+    return cursorResult(items, limit), nil
 }
 ```
 
@@ -99,8 +142,9 @@ sum.Register[admincontracts.Users](k, allStores.Users)  // Richer interface
 - Embed `*sum.Database[Model]` for SQL stores
 - Use `sum.NewStore[Model]` for key-value stores
 - Use `sum.NewBucket[Model]` for object storage
-- Create custom query methods for anything beyond basic CRUD
-- Use the Soy query builder for type-safe queries
+- **Stores hold ALL business logic** — model construction, fetch-then-update, query building, pagination
+- Use the Soy query builder for type-safe queries (never raw SQL)
+- Expose domain methods (`CreateProvider`, `ListProvidersByTenant`), NOT raw storage methods (`Get`, `Set`)
 - Keep `stores.go` as the aggregate factory
 - Stores are shared — implement all methods any surface might need
 - Register stores against surface-specific contracts in each binary's main.go

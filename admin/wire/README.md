@@ -41,23 +41,27 @@ func (u AdminUserResponse) Clone() AdminUserResponse {
 
 ## List Response Pattern
 
+List responses use cursor-based pagination:
+
 ```go
-// AdminUserListResponse is the admin API response for listing users.
-type AdminUserListResponse struct {
-    Users  []AdminUserResponse `json:"users" description:"List of users"`
-    Total  int                 `json:"total" description:"Total matching users"`
-    Limit  int                 `json:"limit" description:"Page size"`
-    Offset int                 `json:"offset" description:"Page offset"`
+// AdminTenantListResponse is the admin API response for listing tenants.
+type AdminTenantListResponse struct {
+    Tenants []AdminTenantResponse `json:"tenants" description:"List of tenants"`
+    Cursor  *int64                `json:"cursor,omitempty" description:"Cursor for next page (last ID in this page)"`
+    Limit   int                   `json:"limit" description:"Page size" example:"20"`
+    HasMore bool                  `json:"has_more" description:"Whether more results exist"`
 }
 
 // Clone returns a deep copy.
-func (r AdminUserListResponse) Clone() AdminUserListResponse {
+func (r AdminTenantListResponse) Clone() AdminTenantListResponse {
     c := r
-    if r.Users != nil {
-        c.Users = make([]AdminUserResponse, len(r.Users))
-        for i, u := range r.Users {
-            c.Users[i] = u.Clone()
-        }
+    if r.Tenants != nil {
+        c.Tenants = make([]AdminTenantResponse, len(r.Tenants))
+        copy(c.Tenants, r.Tenants)
+    }
+    if r.Cursor != nil {
+        v := *r.Cursor
+        c.Cursor = &v
     }
     return c
 }

@@ -26,10 +26,10 @@ func (v AdminDocumentVersionResponse) Clone() AdminDocumentVersionResponse {
 
 // AdminDocumentVersionListResponse is the admin API response for listing document versions.
 type AdminDocumentVersionListResponse struct {
+	Cursor   *int64                         `json:"cursor,omitempty" description:"Cursor for next page (last ID in this page)"`
 	Versions []AdminDocumentVersionResponse `json:"versions" description:"List of document versions"`
-	Total    int                            `json:"total" description:"Total matching versions"`
-	Limit    int                            `json:"limit" description:"Page size"`
-	Offset   int                            `json:"offset" description:"Page offset"`
+	Limit    int                            `json:"limit" description:"Page size" example:"20"`
+	HasMore  bool                           `json:"has_more" description:"Whether more results exist"`
 }
 
 // Clone returns a deep copy of the list response.
@@ -38,6 +38,10 @@ func (r AdminDocumentVersionListResponse) Clone() AdminDocumentVersionListRespon
 	if r.Versions != nil {
 		c.Versions = make([]AdminDocumentVersionResponse, len(r.Versions))
 		copy(c.Versions, r.Versions)
+	}
+	if r.Cursor != nil {
+		v := *r.Cursor
+		c.Cursor = &v
 	}
 	return c
 }

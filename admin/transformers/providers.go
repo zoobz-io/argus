@@ -18,16 +18,16 @@ func ProviderToAdminResponse(p *models.Provider) wire.AdminProviderResponse {
 	}
 }
 
-// ProvidersToAdminList converts a slice of provider models to a paginated admin list response.
-func ProvidersToAdminList(providers []*models.Provider, total, limit, offset int) wire.AdminProviderListResponse {
-	items := make([]wire.AdminProviderResponse, len(providers))
-	for i, p := range providers {
+// ProvidersToAdminList converts a cursor result of providers to an admin list response.
+func ProvidersToAdminList(result *models.CursorResult[models.Provider], limit int) wire.AdminProviderListResponse {
+	items := make([]wire.AdminProviderResponse, len(result.Items))
+	for i, p := range result.Items {
 		items[i] = ProviderToAdminResponse(p)
 	}
 	return wire.AdminProviderListResponse{
 		Providers: items,
-		Total:     total,
+		Cursor:    result.Cursor,
 		Limit:     limit,
-		Offset:    offset,
+		HasMore:   result.HasMore,
 	}
 }

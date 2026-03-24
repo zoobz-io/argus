@@ -1,0 +1,57 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1,
+    "analysis": {
+      "analyzer": {
+        "content_analyzer": {
+          "type": "standard",
+          "max_token_length": 255
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "version_id": {
+        "type": "long"
+      },
+      "document_id": {
+        "type": "long"
+      },
+      "tenant_id": {
+        "type": "long"
+      },
+      "provider_id": {
+        "type": "long"
+      },
+      "document_name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        }
+      },
+      "mime_type": {
+        "type": "keyword"
+      },
+      "content": {
+        "type": "text",
+        "analyzer": "content_analyzer"
+      },
+      "summary": {
+        "type": "text"
+      },
+      "embedding": {
+        "type": "knn_vector",
+        "dimension": 1536,
+        "method": {
+          "name": "hnsw",
+          "space_type": "cosinesimil",
+          "engine": "nmslib"
+        }
+      }
+    }
+  }
+}

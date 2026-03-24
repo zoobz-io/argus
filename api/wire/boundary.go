@@ -23,5 +23,17 @@ func RegisterBoundaries(k sum.Key) error {
 	if _, err := sum.NewBoundary[SearchResponse](k); err != nil {
 		return err
 	}
+	if _, err := sum.NewBoundary[ProviderListResponse](k); err != nil {
+		return err
+	}
+	if _, err := sum.NewBoundary[WatchedPathListResponse](k); err != nil {
+		return err
+	}
+	if _, err := sum.NewBoundary[DocumentListResponse](k); err != nil {
+		return err
+	}
+	if _, err := sum.NewBoundary[DocumentVersionListResponse](k); err != nil {
+		return err
+	}
 	return nil
 }

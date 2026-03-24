@@ -17,6 +17,11 @@ type Document struct {
 	WatchedPathID    int64     `json:"watched_path_id" db:"watched_path_id" constraints:"notnull"`
 }
 
+// GetID returns the document's primary key.
+func (d Document) GetID() int64 {
+	return d.ID
+}
+
 // Clone returns a deep copy of the document.
 func (d Document) Clone() Document {
 	c := d

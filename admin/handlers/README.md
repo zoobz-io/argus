@@ -9,7 +9,7 @@ Define HTTP endpoints for internal team operations. Admin handlers provide syste
 ## Pattern
 
 ```go
-// admin/handlers/users.go
+// admin/handlers/providers.go
 package handlers
 
 import (
@@ -17,41 +17,40 @@ import (
     "github.com/zoobzio/sum"
     "github.com/zoobzio/argus/admin/contracts"
     "github.com/zoobzio/argus/admin/transformers"
-    "github.com/zoobzio/argus/wire"
+    "github.com/zoobzio/argus/admin/wire"
 )
 
-var ListUsers = rocco.GET("/users", func(req *rocco.Request[rocco.NoBody]) (wire.AdminUserListResponse, error) {
-    users := sum.MustUse[contracts.Users](req.Context)
-
-    limit := 50
-    offset := 0
-    // Parse pagination from query params...
-
-    list, err := users.List(req.Context, limit, offset)
+var listAllProviders = rocco.GET[rocco.NoBody, wire.AdminProviderListResponse]("/providers", func(r *rocco.Request[rocco.NoBody]) (wire.AdminProviderListResponse, error) {
+    store := sum.MustUse[contracts.Providers](r)
+    page := cursorPageFromQuery(r.Params)
+    result, err := store.ListProviders(r, page)
     if err != nil {
-        return wire.AdminUserListResponse{}, err
+        return wire.AdminProviderListResponse{}, err
     }
+    return transformers.ProvidersToAdminList(result, page.PageSize()), nil
+}).
+    WithSummary("List all providers").
+    WithTags("providers").
+    WithQueryParams("cursor", "limit").
+    WithAuthentication()
 
-    return transformers.UsersToAdminList(list), nil
-}).WithSummary("List all users").
-   WithDescription("Returns paginated list of all users in the system.").
-   WithTags("Users").
-   WithQueryParams("limit", "offset").
-   WithAuthentication()
-
-var GetUser = rocco.GET("/users/{id}", func(req *rocco.Request[rocco.NoBody]) (wire.AdminUserResponse, error) {
-    users := sum.MustUse[contracts.Users](req.Context)
-
-    user, err := users.Get(req.Context, req.Params.Path["id"])
+var deleteAdminProvider = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/providers/{id}", func(r *rocco.Request[rocco.NoBody]) (rocco.NoBody, error) {
+    id, err := pathID(r.Params, "id")
     if err != nil {
-        return wire.AdminUserResponse{}, err
+        return rocco.NoBody{}, rocco.ErrBadRequest.WithMessage("invalid id")
     }
-
-    return transformers.UserToAdminResponse(user), nil
-}).WithPathParams("id").
-   WithSummary("Get user by ID").
-   WithTags("Users").
-   WithAuthentication()
+    store := sum.MustUse[contracts.Providers](r)
+    if err := store.DeleteProvider(r, id); err != nil {
+        return rocco.NoBody{}, ErrProviderNotFound
+    }
+    return rocco.NoBody{}, nil
+}).
+    WithSummary("Delete provider").
+    WithTags("providers").
+    WithPathParams("id").
+    WithSuccessStatus(204).
+    WithAuthentication().
+    WithErrors(ErrProviderNotFound)
 ```
 
 ## Handler Registration
@@ -89,9 +88,10 @@ var (
 
 ## Guidelines
 
-- Admin handlers expose system-wide operations
-- Include list/search endpoints with pagination
-- Include administrative operations (impersonate, suspend, audit)
-- Expose more data than public handlers (less masking)
-- Keep handler logic minimal - orchestration only
+- Admin handlers expose system-wide, cross-tenant operations
+- Include list endpoints with cursor-based pagination
+- Include delete operations not exposed in the public API
+- Expose more data than public handlers (no masking)
+- **Handlers are thin dispatchers** — parse params, call ONE contract method, transform result, return
+- Never construct models or build queries in handlers — that logic lives in stores
 - Register all handlers in the `All()` function

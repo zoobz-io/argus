@@ -4,12 +4,14 @@ Interface definitions for the admin API surface.
 
 ## Purpose
 
-Define the boundaries between layers for admin operations. Admin contracts may expose broader capabilities than public contracts - system-wide access, bulk operations, and internal data.
+Define the boundaries between layers for admin operations. Admin contracts may expose broader capabilities than public contracts — system-wide access, cross-tenant queries, delete operations, and internal data.
+
+Like public contracts, admin contracts define **domain operations**, not raw storage primitives. The store holds all business logic.
 
 ## Pattern
 
 ```go
-// admin/contracts/users.go
+// admin/contracts/providers.go
 package contracts
 
 import (
@@ -18,30 +20,29 @@ import (
     "github.com/zoobzio/argus/models"
 )
 
-type Users interface {
-    // Get retrieves a user by primary key.
-    Get(ctx context.Context, key string) (*models.User, error)
-    // Set creates or updates a user.
-    Set(ctx context.Context, key string, user *models.User) error
-    // List returns all users with pagination.
-    List(ctx context.Context, limit, offset int) ([]*models.User, error)
-    // Search finds users by criteria.
-    Search(ctx context.Context, query string) ([]*models.User, error)
-    // Impersonate generates a token for the target user.
-    Impersonate(ctx context.Context, targetID string) (string, error)
+type Providers interface {
+    // GetProvider retrieves a provider by ID.
+    GetProvider(ctx context.Context, id int64) (*models.Provider, error)
+    // CreateProvider creates a new provider for a tenant.
+    CreateProvider(ctx context.Context, tenantID int64, providerType models.ProviderType, name string, credentials string) (*models.Provider, error)
+    // DeleteProvider removes a provider.
+    DeleteProvider(ctx context.Context, id int64) error
+    // ListProviders retrieves a paginated list of all providers (cross-tenant).
+    ListProviders(ctx context.Context, page models.CursorPage) (*models.CursorResult[models.Provider], error)
 }
 ```
 
 ## Guidelines
 
 - Admin contracts may expose more methods than public equivalents
-- Include bulk operations (List, Search, BatchUpdate)
-- Include administrative operations (Impersonate, Audit, Suspend)
+- Include cross-tenant list operations with cursor pagination
+- Include delete operations not exposed to the public API
+- Methods are **domain operations** (e.g., `DeleteProvider`, `ListProviders`), NOT raw storage methods (`Get`, `Set`, `Delete`)
 - Document each method with a brief comment
 - Keep interfaces focused - prefer multiple small interfaces over one large one
 
 ## Naming
 
-- Interface names are nouns: `Users`, `Repositories`, `Sessions`
-- Method names follow Go conventions: `Get`, `Set`, `List`, `Delete`
-- Use `ByX` suffix for lookup methods: `GetByLogin`, `ListByUserID`
+- Interface names are nouns: `Providers`, `Documents`, `Tenants`
+- Method names describe the domain operation: `GetProvider`, `DeleteProvider`, `ListProviders`
+- Use `ByX` suffix for scoped queries: `ListProvidersByTenant`

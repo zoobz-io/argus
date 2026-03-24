@@ -6,8 +6,10 @@ import (
 	"github.com/zoobz-io/argus/models"
 )
 
-// Documents defines the contract for document data access.
+// Documents defines the contract for document operations on the public API surface.
 type Documents interface {
-	// Get retrieves a document by primary key.
-	Get(ctx context.Context, key string) (*models.Document, error)
+	// GetDocument retrieves a document by ID.
+	GetDocument(ctx context.Context, id int64) (*models.Document, error)
+	// ListDocumentsByTenant retrieves documents for a tenant using cursor pagination.
+	ListDocumentsByTenant(ctx context.Context, tenantID int64, page models.CursorPage) (*models.CursorResult[models.Document], error)
 }

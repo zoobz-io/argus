@@ -13,6 +13,11 @@ type WatchedPath struct {
 	Active     bool      `json:"active" db:"active" constraints:"notnull" default:"true"`
 }
 
+// GetID returns the watched path's primary key.
+func (w WatchedPath) GetID() int64 {
+	return w.ID
+}
+
 // Clone returns a copy of the watched path.
 func (w WatchedPath) Clone() WatchedPath {
 	return w

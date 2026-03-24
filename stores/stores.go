@@ -5,6 +5,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/zoobz-io/astql"
 	"github.com/zoobz-io/grub"
+	"github.com/zoobz-io/argus/models"
 )
 
 // Stores aggregates all data store instances for the application.
@@ -57,4 +58,28 @@ func New(db *sqlx.DB, renderer astql.Renderer, searchProvider grub.SearchProvide
 		DocumentVersions:      documentVersions,
 		DocumentVersionSearch: documentVersionSearch,
 	}, nil
+}
+
+// idGetter is a constraint for models with an ID field.
+type idGetter interface {
+	GetID() int64
+}
+
+// cursorResult builds a CursorResult from a fetched slice, where limit+1 items
+// were requested to determine HasMore.
+func cursorResult[T idGetter](items []*T, limit int) *models.CursorResult[T] {
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	var cursor *int64
+	if len(items) > 0 {
+		id := (*items[len(items)-1]).GetID()
+		cursor = &id
+	}
+	return &models.CursorResult[T]{
+		Items:   items,
+		Cursor:  cursor,
+		HasMore: hasMore,
+	}
 }

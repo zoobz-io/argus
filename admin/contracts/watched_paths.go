@@ -8,10 +8,16 @@ import (
 
 // WatchedPaths defines admin operations for watched paths.
 type WatchedPaths interface {
-	// Get retrieves a watched path by primary key.
-	Get(ctx context.Context, key string) (*models.WatchedPath, error)
-	// Set creates or updates a watched path.
-	Set(ctx context.Context, key string, path *models.WatchedPath) error
-	// Delete removes a watched path.
-	Delete(ctx context.Context, key string) error
+	// GetWatchedPath retrieves a watched path by ID.
+	GetWatchedPath(ctx context.Context, id int64) (*models.WatchedPath, error)
+	// CreateWatchedPath creates a new watched path.
+	CreateWatchedPath(ctx context.Context, tenantID int64, providerID int64, path string) (*models.WatchedPath, error)
+	// UpdateWatchedPath updates an existing watched path.
+	UpdateWatchedPath(ctx context.Context, id int64, path string) (*models.WatchedPath, error)
+	// DeleteWatchedPath removes a watched path.
+	DeleteWatchedPath(ctx context.Context, id int64) error
+	// ListWatchedPaths retrieves a paginated list of all watched paths.
+	ListWatchedPaths(ctx context.Context, page models.CursorPage) (*models.CursorResult[models.WatchedPath], error)
+	// ListWatchedPathsByTenant retrieves watched paths for a specific tenant.
+	ListWatchedPathsByTenant(ctx context.Context, tenantID int64, page models.CursorPage) (*models.CursorResult[models.WatchedPath], error)
 }

@@ -41,6 +41,15 @@ linters:
           - goconst
           - dupl
           - govet
+      # Admin handlers follow a uniform list/get/delete pattern per entity.
+      # The structural similarity is inherent to the rocco handler pattern.
+      - path: admin/handlers/(documents|document_versions|watched_paths)\.go
+        linters:
+          - dupl
+      # Stores share cursor-pagination boilerplate across entities.
+      - path: stores/(documents|document_versions)\.go
+        linters:
+          - dupl
 
   settings:
     errcheck:

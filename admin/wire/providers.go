@@ -24,10 +24,10 @@ func (p AdminProviderResponse) Clone() AdminProviderResponse {
 
 // AdminProviderListResponse is the wire representation of a paginated provider list.
 type AdminProviderListResponse struct {
+	Cursor    *int64                  `json:"cursor,omitempty" description:"Cursor for next page (last ID in this page)"`
 	Providers []AdminProviderResponse `json:"providers" description:"List of providers"`
-	Total     int                     `json:"total" description:"Total matching providers"`
-	Limit     int                     `json:"limit" description:"Page size"`
-	Offset    int                     `json:"offset" description:"Page offset"`
+	Limit     int                     `json:"limit" description:"Page size" example:"20"`
+	HasMore   bool                    `json:"has_more" description:"Whether more results exist"`
 }
 
 // Clone returns a deep copy of the response.
@@ -36,6 +36,10 @@ func (r AdminProviderListResponse) Clone() AdminProviderListResponse {
 	if r.Providers != nil {
 		c.Providers = make([]AdminProviderResponse, len(r.Providers))
 		copy(c.Providers, r.Providers)
+	}
+	if r.Cursor != nil {
+		v := *r.Cursor
+		c.Cursor = &v
 	}
 	return c
 }

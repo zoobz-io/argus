@@ -54,6 +54,11 @@ func (p *Provider) AfterLoad(ctx context.Context) error {
 	return nil
 }
 
+// GetID returns the provider's primary key.
+func (p Provider) GetID() int64 {
+	return p.ID
+}
+
 // Clone returns a deep copy of the provider.
 func (p Provider) Clone() Provider {
 	return p

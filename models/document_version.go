@@ -25,6 +25,11 @@ type DocumentVersion struct {
 	VersionNumber    int              `json:"version_number" db:"version_number" constraints:"notnull"`
 }
 
+// GetID returns the document version's primary key.
+func (v DocumentVersion) GetID() int64 {
+	return v.ID
+}
+
 // Clone returns a deep copy of the document version.
 func (v DocumentVersion) Clone() DocumentVersion {
 	return v
