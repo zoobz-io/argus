@@ -22,6 +22,7 @@ import (
 	"github.com/zoobz-io/argus/api/wire"
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
+	"github.com/zoobz-io/argus/internal/auth"
 	"github.com/zoobz-io/argus/internal/boot"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/ingest"
@@ -77,6 +78,9 @@ func run() error {
 	if err := sum.Config[config.Encryption](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load encryption config: %w", err)
 	}
+	if err := sum.Config[config.Auth](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load auth config: %w", err)
+	}
 	encCfg := sum.MustUse[config.Encryption](ctx)
 	encKey, err := hex.DecodeString(encCfg.Key)
 	if err != nil {
@@ -125,6 +129,16 @@ func run() error {
 		return err
 	}
 	defer func() { _ = classifyConn.Close() }()
+
+	// Authentication (OIDC)
+	authCfg := sum.MustUse[config.Auth](ctx)
+	authenticator, err := auth.NewAuthenticator(ctx, authCfg.Issuer, authCfg.Audience)
+	if err != nil {
+		return fmt.Errorf("failed to create oidc authenticator: %w", err)
+	}
+	svc.Engine().WithAuthenticator(authenticator)
+	log.Println("oidc authenticator initialized")
+	capitan.Emit(ctx, events.StartupAuthReady)
 
 	embedService, err := boot.Embedding(ctx)
 	if err != nil {

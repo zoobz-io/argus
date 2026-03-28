@@ -13,6 +13,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./tools/dev/init-zitadel-db.sql:/docker-entrypoint-initdb.d/init-zitadel.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U argus"]
       interval: 5s
@@ -87,6 +88,41 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # =============================================================================
+  # Identity
+  # =============================================================================
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:latest
+    command: start-from-init --masterkey "01234567890123456789012345678901" --tlsMode disabled
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_PORT: "5432"
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_EXTERNALPORT: "8085"
+      ZITADEL_EXTERNALDOMAIN: zitadel
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: "Argus Dev"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: admin
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: "Admin123!"
+    ports:
+      - "8085:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # =============================================================================
   # Observability Stack
@@ -168,6 +204,8 @@ services:
         condition: service_healthy
       ocr:
         condition: service_healthy
+      zitadel:
+        condition: service_healthy
     environment:
       APP_PORT: "8080"
       APP_DB_HOST: postgres
@@ -184,6 +222,8 @@ services:
       APP_STORAGE_USE_SSL: "false"
       APP_OPENSEARCH_ADDR: http://opensearch:9200
       APP_OCR_ADDR: ocr:50051
+      APP_AUTH_ISSUER: http://zitadel:8080
+      APP_AUTH_AUDIENCE: ""
       APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: argus
