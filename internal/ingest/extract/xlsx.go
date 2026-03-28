@@ -13,6 +13,11 @@ import (
 // Preserves row/column structure with tab-separated cells and newline-separated rows.
 // Each sheet is separated by a double newline.
 func XLSX(_ context.Context, data []byte) (string, error) {
+	// Pre-validate archive before handing to excelize which handles zip internally.
+	if _, err := safeZIPReader(data); err != nil {
+		return "", fmt.Errorf("xlsx archive validation: %w", err)
+	}
+
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("opening xlsx: %w", err)

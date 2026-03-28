@@ -1,8 +1,6 @@
 package extract
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -14,14 +12,14 @@ import (
 // Parses word/document.xml with structure-aware handling of paragraphs,
 // text runs, tables, and line breaks.
 func DOCX(_ context.Context, data []byte) (string, error) {
-	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	r, err := safeZIPReader(data)
 	if err != nil {
 		return "", fmt.Errorf("opening docx archive: %w", err)
 	}
 
 	for _, f := range r.File {
 		if f.Name == "word/document.xml" {
-			rc, err := f.Open()
+			rc, err := safeOpen(f)
 			if err != nil {
 				return "", fmt.Errorf("opening document.xml: %w", err)
 			}
