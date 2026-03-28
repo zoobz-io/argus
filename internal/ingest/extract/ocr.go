@@ -6,6 +6,7 @@ import (
 
 	"github.com/zoobz-io/sum"
 
+	"github.com/zoobz-io/argus/config"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/proto"
 )
@@ -16,7 +17,10 @@ import (
 func OCR(mimeType string) Func {
 	return func(ctx context.Context, data []byte) (string, error) {
 		ocr := sum.MustUse[intcontracts.OCR](ctx)
-		resp, err := ocr.ExtractText(ctx, &proto.ExtractTextRequest{
+		cfg := sum.MustUse[config.OCR](ctx)
+		callCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
+		resp, err := ocr.ExtractText(callCtx, &proto.ExtractTextRequest{
 			Document: data,
 			MimeType: mimeType,
 		})

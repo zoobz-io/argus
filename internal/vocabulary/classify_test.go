@@ -11,6 +11,7 @@ import (
 	"github.com/zoobz-io/sum"
 	"google.golang.org/grpc"
 
+	"github.com/zoobz-io/argus/config"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/proto"
 )
@@ -28,6 +29,7 @@ func setupClassifyRegistry(t *testing.T, classifier intcontracts.Classifier) con
 	sum.Reset()
 	t.Cleanup(sum.Reset)
 	k := sum.Start()
+	_ = sum.Config[config.Classify](context.Background(), k, nil)
 	sum.Register[intcontracts.Classifier](k, classifier)
 	sum.Freeze(k)
 	return context.Background()
