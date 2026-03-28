@@ -79,8 +79,8 @@ services:
 
   ocr:
     build:
-      context: ./tools/ocr
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: tools/ocr/Dockerfile
     ports:
       - "50051:50051"
     healthcheck:
@@ -88,6 +88,31 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  convert:
+    build:
+      context: .
+      dockerfile: tools/convert/Dockerfile
+    ports:
+      - "50052:50052"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50052"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  classify:
+    build:
+      context: .
+      dockerfile: tools/classify/Dockerfile
+    ports:
+      - "50053:50053"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:50053"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   # =============================================================================
   # Identity
@@ -204,6 +229,10 @@ services:
         condition: service_healthy
       ocr:
         condition: service_healthy
+      convert:
+        condition: service_healthy
+      classify:
+        condition: service_healthy
       zitadel:
         condition: service_healthy
     environment:
@@ -222,6 +251,8 @@ services:
       APP_STORAGE_USE_SSL: "false"
       APP_OPENSEARCH_ADDR: http://opensearch:9200
       APP_OCR_ADDR: ocr:50051
+      APP_CONVERT_ADDR: convert:50052
+      APP_CLASSIFY_ADDR: classify:50053
       APP_AUTH_ISSUER: http://zitadel:8080
       APP_AUTH_AUDIENCE: ""
       APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -229,6 +260,57 @@ services:
       OTEL_SERVICE_NAME: argus
     ports:
       - "8080:8080"
+    volumes:
+      - .:/app
+
+  worker:
+    build:
+      context: .
+      dockerfile: tools/dev/Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      ocr:
+        condition: service_healthy
+      convert:
+        condition: service_healthy
+      classify:
+        condition: service_healthy
+    environment:
+      APP_DB_HOST: postgres
+      APP_DB_PORT: "5432"
+      APP_DB_NAME: argus
+      APP_DB_USER: argus
+      APP_DB_PASSWORD: argus
+      APP_DB_SSLMODE: disable
+      APP_REDIS_ADDR: redis:6379
+      APP_STORAGE_ENDPOINT: minio:9000
+      APP_STORAGE_ACCESS_KEY: argus
+      APP_STORAGE_SECRET_KEY: argusdev
+      APP_STORAGE_BUCKET: argus
+      APP_STORAGE_USE_SSL: "false"
+      APP_OPENSEARCH_ADDR: http://opensearch:9200
+      APP_OCR_ADDR: ocr:50051
+      APP_CONVERT_ADDR: convert:50052
+      APP_CLASSIFY_ADDR: classify:50053
+      APP_LLM_API_KEY: "${OPENAI_API_KEY}"
+      APP_LLM_MODEL: gpt-4o-mini
+      APP_EMBEDDING_API_KEY: "${OPENAI_API_KEY}"
+      APP_EMBEDDING_MODEL: text-embedding-3-small
+      APP_EMBEDDING_DIMENSIONS: "1536"
+      APP_WORKER_CONSUMER_GROUP: argus-worker
+      APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: argus-worker
+    command: ["go", "run", "./cmd/worker"]
     volumes:
       - .:/app
 

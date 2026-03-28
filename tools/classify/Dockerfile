@@ -34,6 +34,12 @@ RUN useradd -m -u 1000 sidecar
 COPY --from=builder /root/.cache/huggingface /home/sidecar/.cache/huggingface
 RUN chown -R sidecar:sidecar /home/sidecar/.cache
 
+# Install grpc-health-probe for container health checks.
+RUN apt-get update && apt-get install -y --no-install-recommends wget && \
+    wget -qO /usr/local/bin/grpc-health-probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.35/grpc_health_probe-linux-amd64 && \
+    chmod +x /usr/local/bin/grpc-health-probe && \
+    apt-get remove -y wget && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
 # Copy server.
 COPY tools/classify/server.py .
 
