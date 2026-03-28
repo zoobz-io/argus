@@ -76,6 +76,9 @@ func run() error {
 	if err := sum.Config[config.Embedding](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load embedding config: %w", err)
 	}
+	if err := sum.Config[config.OTEL](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load otel config: %w", err)
+	}
 	if err := sum.Config[config.Worker](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load worker config: %w", err)
 	}

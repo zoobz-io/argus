@@ -89,13 +89,11 @@ func Storage(ctx context.Context) (grub.BucketProvider, error) {
 
 // OTEL creates OpenTelemetry providers. serviceName identifies the process
 // in traces and metrics (e.g., "argus", "argus-worker", "argus-notifier").
+// Reads endpoint from config.OTEL via sum.
 func OTEL(ctx context.Context, serviceName string) (*intotel.Providers, error) {
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "localhost:4318"
-	}
+	cfg := sum.MustUse[config.OTEL](ctx)
 	providers, err := intotel.New(ctx, intotel.Config{
-		Endpoint:    endpoint,
+		Endpoint:    cfg.Endpoint,
 		ServiceName: serviceName,
 	})
 	if err != nil {
