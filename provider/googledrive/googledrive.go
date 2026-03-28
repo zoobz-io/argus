@@ -39,7 +39,8 @@ func DefaultScopes() []string {
 
 // GoogleDrive implements provider.Provider for Google Drive.
 type GoogleDrive struct {
-	oauth *oauth2.Config
+	oauth    *oauth2.Config
+	endpoint string // override for testing; empty uses default Google API
 }
 
 // New creates a Google Drive provider with the given application credentials.
@@ -212,7 +213,11 @@ func (g *GoogleDrive) driveService(ctx context.Context, creds *provider.Credenti
 	token := credsToToken(creds)
 	tokenSource := g.oauth.TokenSource(ctx, token)
 
-	svc, err := drive.NewService(ctx, option.WithTokenSource(tokenSource))
+	opts := []option.ClientOption{option.WithTokenSource(tokenSource)}
+	if g.endpoint != "" {
+		opts = append(opts, option.WithEndpoint(g.endpoint))
+	}
+	svc, err := drive.NewService(ctx, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating drive service: %w", err)
 	}
