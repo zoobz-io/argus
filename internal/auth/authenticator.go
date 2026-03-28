@@ -21,6 +21,7 @@ type UserUpserter interface {
 type claims struct {
 	Roles map[string]map[string]string `json:"urn:zitadel:iam:org:project:roles"`
 	Email string                       `json:"email"`
+	Name  string                       `json:"name"`
 	OrgID string                       `json:"urn:zitadel:iam:user:resourceowner:id"`
 	Scope string                       `json:"scope"`
 }
@@ -63,8 +64,12 @@ func NewAuthenticator(ctx context.Context, issuer, audience string, upserter Use
 
 		if upserter != nil {
 			go func() {
-				displayName := c.Email
-				if err := upserter.UpsertFromClaims(ctx, identity.sub, identity.tenantID, identity.email, displayName); err != nil {
+				bgCtx := context.WithoutCancel(ctx)
+				displayName := c.Name
+				if displayName == "" {
+					displayName = c.Email
+				}
+				if err := upserter.UpsertFromClaims(bgCtx, identity.sub, identity.tenantID, identity.email, displayName); err != nil {
 					log.Printf("user upsert failed (non-blocking): %v", err)
 				}
 			}()

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -386,5 +387,163 @@ func TestNewAuthenticator_WithAudience(t *testing.T) {
 	_, err = authFn(ctx, req2)
 	if err == nil {
 		t.Error("expected error for wrong audience")
+	}
+}
+
+type mockUpserter struct {
+	called      chan struct{}
+	externalID  string
+	tenantID    string
+	email       string
+	displayName string
+	err         error
+}
+
+func (m *mockUpserter) UpsertFromClaims(_ context.Context, externalID, tenantID, email, displayName string) error {
+	m.externalID = externalID
+	m.tenantID = tenantID
+	m.email = email
+	m.displayName = displayName
+	if m.called != nil {
+		close(m.called)
+	}
+	return m.err
+}
+
+func TestNewAuthenticator_UpsertCalledInBackground(t *testing.T) {
+	srv, sign := fakeOIDCServer(t)
+	defer srv.Close()
+
+	upserter := &mockUpserter{called: make(chan struct{})}
+
+	ctx := context.Background()
+	authFn, err := NewAuthenticator(ctx, srv.URL, "", upserter)
+	if err != nil {
+		t.Fatalf("NewAuthenticator failed: %v", err)
+	}
+
+	token := sign(map[string]interface{}{
+		"iss":   srv.URL,
+		"sub":   "user-99",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+		"iat":   time.Now().Unix(),
+		"email": "bg@example.com",
+		"name":  "Background User",
+		"urn:zitadel:iam:user:resourceowner:id": "org-1",
+	})
+
+	req := newTestRequest(t, "GET", "/")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	identity, err := authFn(ctx, req)
+	if err != nil {
+		t.Fatalf("authenticator returned error: %v", err)
+	}
+	if identity.ID() != "user-99" {
+		t.Errorf("ID() = %s, want user-99", identity.ID())
+	}
+
+	// Wait for the background goroutine.
+	select {
+	case <-upserter.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("upserter was not called within timeout")
+	}
+
+	if upserter.externalID != "user-99" {
+		t.Errorf("upserter.externalID = %s, want user-99", upserter.externalID)
+	}
+	if upserter.tenantID != "org-1" {
+		t.Errorf("upserter.tenantID = %s, want org-1", upserter.tenantID)
+	}
+	if upserter.email != "bg@example.com" {
+		t.Errorf("upserter.email = %s, want bg@example.com", upserter.email)
+	}
+	if upserter.displayName != "Background User" {
+		t.Errorf("upserter.displayName = %s, want Background User", upserter.displayName)
+	}
+}
+
+func TestNewAuthenticator_UpsertFallsBackToEmail(t *testing.T) {
+	srv, sign := fakeOIDCServer(t)
+	defer srv.Close()
+
+	upserter := &mockUpserter{called: make(chan struct{})}
+
+	ctx := context.Background()
+	authFn, err := NewAuthenticator(ctx, srv.URL, "", upserter)
+	if err != nil {
+		t.Fatalf("NewAuthenticator failed: %v", err)
+	}
+
+	// Token without name claim.
+	token := sign(map[string]interface{}{
+		"iss":   srv.URL,
+		"sub":   "user-100",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+		"iat":   time.Now().Unix(),
+		"email": "noname@example.com",
+		"urn:zitadel:iam:user:resourceowner:id": "org-2",
+	})
+
+	req := newTestRequest(t, "GET", "/")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	_, err = authFn(ctx, req)
+	if err != nil {
+		t.Fatalf("authenticator returned error: %v", err)
+	}
+
+	select {
+	case <-upserter.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("upserter was not called within timeout")
+	}
+
+	if upserter.displayName != "noname@example.com" {
+		t.Errorf("displayName = %s, want noname@example.com (email fallback)", upserter.displayName)
+	}
+}
+
+func TestNewAuthenticator_UpsertErrorDoesNotBlockAuth(t *testing.T) {
+	srv, sign := fakeOIDCServer(t)
+	defer srv.Close()
+
+	upserter := &mockUpserter{
+		called: make(chan struct{}),
+		err:    fmt.Errorf("FK constraint violation"),
+	}
+
+	ctx := context.Background()
+	authFn, err := NewAuthenticator(ctx, srv.URL, "", upserter)
+	if err != nil {
+		t.Fatalf("NewAuthenticator failed: %v", err)
+	}
+
+	token := sign(map[string]interface{}{
+		"iss":   srv.URL,
+		"sub":   "user-fail",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+		"iat":   time.Now().Unix(),
+		"email": "fail@example.com",
+		"urn:zitadel:iam:user:resourceowner:id": "org-missing",
+	})
+
+	req := newTestRequest(t, "GET", "/")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	// Auth should succeed even though upsert will fail.
+	identity, err := authFn(ctx, req)
+	if err != nil {
+		t.Fatalf("auth should succeed despite upsert error: %v", err)
+	}
+	if identity.ID() != "user-fail" {
+		t.Errorf("ID() = %s, want user-fail", identity.ID())
+	}
+
+	select {
+	case <-upserter.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("upserter was not called within timeout")
 	}
 }
