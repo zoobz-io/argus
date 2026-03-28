@@ -9,10 +9,12 @@ import (
 
 // DocumentVersionSearch defines admin operations for the document version search index.
 type DocumentVersionSearch interface {
-	// Search performs a full-text search across document version content.
-	Search(ctx context.Context, query string, size int, from int) (*models.SearchResult, error)
+	// Search performs a full-text, semantic, or hybrid search across document versions.
+	Search(ctx context.Context, params *models.SearchParams) (*models.SearchResult, error)
+	// GetDocumentEmbedding retrieves the embedding vector for a document.
+	GetDocumentEmbedding(ctx context.Context, documentID string) ([]float32, error)
 	// IndexVersion indexes a document version in the search index.
 	IndexVersion(ctx context.Context, version *models.DocumentVersionIndex) error
-	// DeleteVersion removes a document version from the search index.
-	DeleteVersion(ctx context.Context, versionID int64) error
+	// DeleteDocument removes a document from the search index.
+	DeleteDocument(ctx context.Context, documentID string) error
 }

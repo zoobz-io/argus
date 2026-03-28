@@ -10,14 +10,14 @@ import (
 // WatchedPathResponse is the API wire type for a watched path.
 type WatchedPathResponse struct {
 	Path       string `json:"path" description:"Watched path" example:"/documents/reports"`
-	ID         int64  `json:"id" description:"Watched path ID" example:"1"`
-	ProviderID int64  `json:"provider_id" description:"Associated provider ID" example:"1"`
+	ID         string `json:"id" description:"Watched path ID" example:"550e8400-e29b-41d4-a716-446655440000"`
+	ProviderID string `json:"provider_id" description:"Associated provider ID" example:"550e8400-e29b-41d4-a716-446655440000"`
 	Active     bool   `json:"active" description:"Whether the path is being watched"`
 }
 
 // OnSend applies boundary rules before sending the response.
 func (w *WatchedPathResponse) OnSend(ctx context.Context) error {
-	b := sum.MustUse[*sum.Boundary[WatchedPathResponse]](ctx)
+	b := sum.MustUse[sum.Boundary[WatchedPathResponse]](ctx)
 	masked, err := b.Send(ctx, *w)
 	if err != nil {
 		return err
@@ -34,7 +34,7 @@ func (w WatchedPathResponse) Clone() WatchedPathResponse {
 // WatchedPathCreateRequest is the API wire type for creating a watched path.
 type WatchedPathCreateRequest struct {
 	Path       string `json:"path" description:"Path to watch" example:"/documents/reports"`
-	ProviderID int64  `json:"provider_id" description:"Provider ID" example:"1"`
+	ProviderID string `json:"provider_id" description:"Provider ID" example:"550e8400-e29b-41d4-a716-446655440000"`
 }
 
 // Validate checks that all required fields are present and valid.

@@ -9,6 +9,8 @@ import (
 
 // DocumentVersionSearch defines the contract for searching document versions.
 type DocumentVersionSearch interface {
-	// Search performs a full-text search across document version content.
-	Search(ctx context.Context, query string, size int, from int) (*models.SearchResult, error)
+	// Search performs a full-text, semantic, or hybrid search across document versions.
+	Search(ctx context.Context, params *models.SearchParams) (*models.SearchResult, error)
+	// GetDocumentEmbedding retrieves the embedding vector for a document.
+	GetDocumentEmbedding(ctx context.Context, documentID string) ([]float32, error)
 }

@@ -23,6 +23,17 @@ func All() []rocco.Endpoint {
 		getDocumentVersion,
 		// Search
 		searchDocuments,
+		relatedDocuments,
+		// Topics
+		listTopics,
+		getTopic,
+		createTopic,
+		updateTopic,
+		// Tags
+		listTags,
+		getTag,
+		createTag,
+		updateTag,
 		// Ingestion
 		triggerIngest,
 	}

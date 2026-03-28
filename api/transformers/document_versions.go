@@ -9,10 +9,9 @@ import (
 // DocumentVersionToResponse transforms a DocumentVersion model to an API response.
 func DocumentVersionToResponse(v *models.DocumentVersion) wire.DocumentVersionResponse {
 	return wire.DocumentVersionResponse{
-		ID:               v.ID,
-		DocumentID:       v.DocumentID,
-		VersionNumber:    v.VersionNumber,
-		ExtractionStatus: v.ExtractionStatus,
+		ID:            v.ID,
+		DocumentID:    v.DocumentID,
+		VersionNumber: v.VersionNumber,
 	}
 }
 

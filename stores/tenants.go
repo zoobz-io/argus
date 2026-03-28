@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/zoobz-io/astql"
-	"github.com/zoobz-io/sum"
 	"github.com/zoobz-io/argus/models"
+	"github.com/zoobz-io/sum"
 )
 
 // Tenants provides database access for tenants.
@@ -16,24 +17,23 @@ type Tenants struct {
 }
 
 // NewTenants creates a new tenants store.
-func NewTenants(db *sqlx.DB, renderer astql.Renderer) (*Tenants, error) {
-	database, err := sum.NewDatabase[models.Tenant](db, "tenants", renderer)
-	if err != nil {
-		return nil, err
+func NewTenants(db *sqlx.DB, renderer astql.Renderer) *Tenants {
+	return &Tenants{
+		Database: sum.NewDatabase[models.Tenant](db, "tenants", renderer),
 	}
-	return &Tenants{Database: database}, nil
 }
 
 // GetTenant retrieves a tenant by ID.
-func (s *Tenants) GetTenant(ctx context.Context, id int64) (*models.Tenant, error) {
+func (s *Tenants) GetTenant(ctx context.Context, id string) (*models.Tenant, error) {
 	return s.Select().
-		Where("id", "=", ":id").
+		Where("id", "=", "id").
 		Exec(ctx, map[string]any{"id": id})
 }
 
 // CreateTenant creates a new tenant.
 func (s *Tenants) CreateTenant(ctx context.Context, name string, slug string) (*models.Tenant, error) {
 	t := &models.Tenant{
+		ID:   uuid.New().String(),
 		Name: name,
 		Slug: slug,
 	}
@@ -44,36 +44,34 @@ func (s *Tenants) CreateTenant(ctx context.Context, name string, slug string) (*
 }
 
 // UpdateTenant updates an existing tenant.
-func (s *Tenants) UpdateTenant(ctx context.Context, id int64, name string, slug string) (*models.Tenant, error) {
+func (s *Tenants) UpdateTenant(ctx context.Context, id string, name string, slug string) (*models.Tenant, error) {
 	t, err := s.GetTenant(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	t.Name = name
 	t.Slug = slug
-	if err := s.Set(ctx, fmt.Sprintf("%d", id), t); err != nil {
+	if err := s.Set(ctx, id, t); err != nil {
 		return nil, fmt.Errorf("updating tenant: %w", err)
 	}
 	return t, nil
 }
 
 // DeleteTenant removes a tenant.
-func (s *Tenants) DeleteTenant(ctx context.Context, id int64) error {
-	return s.Delete(ctx, fmt.Sprintf("%d", id))
+func (s *Tenants) DeleteTenant(ctx context.Context, id string) error {
+	return s.Delete(ctx, id)
 }
 
-// ListTenants retrieves a paginated list of tenants using cursor-based pagination.
-func (s *Tenants) ListTenants(ctx context.Context, page models.CursorPage) (*models.CursorResult[models.Tenant], error) {
-	limit := page.PageSize()
-	q := s.Query().OrderBy("id", "ASC").Limit(limit + 1)
-	params := map[string]any{}
-	if page.Cursor != nil {
-		q = q.Where("id", ">", ":cursor")
-		params["cursor"] = *page.Cursor
-	}
-	items, err := q.Exec(ctx, params)
+// ListTenants retrieves a paginated list of tenants using offset/limit pagination.
+func (s *Tenants) ListTenants(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Tenant], error) {
+	items, err := s.Query().
+		OrderBy("created_at", "ASC").
+		OrderBy("id", "ASC").
+		Limit(page.PageSize()).
+		Offset(page.Offset).
+		Exec(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	return cursorResult(items, limit), nil
+	return &models.OffsetResult[models.Tenant]{Items: items, Offset: page.Offset}, nil
 }

@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package argus.classify.v1;
+
+option go_package = "github.com/zoobz-io/argus/proto;proto";
+
+service ClassifyService {
+  // ClassifyText evaluates text for prompt injection attempts.
+  rpc ClassifyText(ClassifyRequest) returns (ClassifyResponse);
+}
+
+message ClassifyRequest {
+  // Text content to classify.
+  string text = 1;
+}
+
+message ClassifyResponse {
+  // Whether the text is considered safe.
+  bool safe = 1;
+  // Injection probability score (0.0 = safe, 1.0 = injection).
+  float score = 2;
+  // Classification label (e.g., "SAFE", "INJECTION").
+  string label = 3;
+}

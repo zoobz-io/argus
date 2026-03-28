@@ -8,7 +8,7 @@ import (
 
 // IngestRequest is the request body for triggering manual ingestion.
 type IngestRequest struct {
-	VersionID int64 `json:"version_id" description:"Document version to ingest" example:"1"`
+	VersionID string `json:"version_id" description:"Document version to ingest" example:"550e8400-e29b-41d4-a716-446655440000"`
 }
 
 // Clone returns a copy of the request.

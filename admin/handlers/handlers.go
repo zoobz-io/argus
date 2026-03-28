@@ -29,5 +29,15 @@ func All() []rocco.Endpoint {
 		listAllDocumentVersions,
 		getAdminDocumentVersion,
 		deleteAdminDocumentVersion,
+		// Topics
+		listAdminTopics,
+		getAdminTopic,
+		createAdminTopic,
+		deleteAdminTopic,
+		// Tags
+		listAdminTags,
+		getAdminTag,
+		createAdminTag,
+		deleteAdminTag,
 	}
 }

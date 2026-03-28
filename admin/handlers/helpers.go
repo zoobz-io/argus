@@ -7,9 +7,9 @@ import (
 	"github.com/zoobz-io/rocco"
 )
 
-// cursorPageFromQuery builds a CursorPage from query parameters.
-func cursorPageFromQuery(params *rocco.Params) models.CursorPage {
-	page := models.CursorPage{
+// offsetPageFromQuery builds an OffsetPage from query parameters.
+func offsetPageFromQuery(params *rocco.Params) models.OffsetPage {
+	page := models.OffsetPage{
 		Limit: models.DefaultPageSize,
 	}
 	if v := params.Query["limit"]; v != "" {
@@ -17,15 +17,15 @@ func cursorPageFromQuery(params *rocco.Params) models.CursorPage {
 			page.Limit = n
 		}
 	}
-	if v := params.Query["cursor"]; v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			page.Cursor = &n
+	if v := params.Query["offset"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			page.Offset = n
 		}
 	}
 	return page
 }
 
-// pathID parses an int64 path parameter.
-func pathID(params *rocco.Params, name string) (int64, error) {
-	return strconv.ParseInt(params.Path[name], 10, 64)
+// pathID extracts a string path parameter.
+func pathID(params *rocco.Params, name string) string {
+	return params.Path[name]
 }

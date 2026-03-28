@@ -9,11 +9,11 @@ import (
 // Documents defines admin operations for documents.
 type Documents interface {
 	// GetDocument retrieves a document by ID.
-	GetDocument(ctx context.Context, id int64) (*models.Document, error)
+	GetDocument(ctx context.Context, id string) (*models.Document, error)
 	// DeleteDocument removes a document.
-	DeleteDocument(ctx context.Context, id int64) error
+	DeleteDocument(ctx context.Context, id string) error
 	// ListDocuments retrieves a paginated list of all documents.
-	ListDocuments(ctx context.Context, page models.CursorPage) (*models.CursorResult[models.Document], error)
+	ListDocuments(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Document], error)
 	// ListDocumentsByTenant retrieves documents for a specific tenant.
-	ListDocumentsByTenant(ctx context.Context, tenantID int64, page models.CursorPage) (*models.CursorResult[models.Document], error)
+	ListDocumentsByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Document], error)
 }

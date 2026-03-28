@@ -10,23 +10,20 @@ import (
 
 var listAllWatchedPaths = rocco.GET[rocco.NoBody, wire.AdminWatchedPathListResponse]("/watched-paths", func(r *rocco.Request[rocco.NoBody]) (wire.AdminWatchedPathListResponse, error) {
 	store := sum.MustUse[contracts.WatchedPaths](r)
-	page := cursorPageFromQuery(r.Params)
+	page := offsetPageFromQuery(r.Params)
 	result, err := store.ListWatchedPaths(r, page)
 	if err != nil {
 		return wire.AdminWatchedPathListResponse{}, err
 	}
-	return transformers.WatchedPathsToAdminList(result, page.PageSize()), nil
+	return transformers.WatchedPathsToAdminList(result), nil
 }).
 	WithSummary("List all watched paths").
 	WithTags("watched-paths").
-	WithQueryParams("cursor", "limit").
+	WithQueryParams("offset", "limit").
 	WithAuthentication()
 
 var getAdminWatchedPath = rocco.GET[rocco.NoBody, wire.AdminWatchedPathResponse]("/watched-paths/{id}", func(r *rocco.Request[rocco.NoBody]) (wire.AdminWatchedPathResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.AdminWatchedPathResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.WatchedPaths](r)
 	wp, err := store.GetWatchedPath(r, id)
 	if err != nil {
@@ -41,10 +38,7 @@ var getAdminWatchedPath = rocco.GET[rocco.NoBody, wire.AdminWatchedPathResponse]
 	WithErrors(ErrWatchedPathNotFound)
 
 var deleteAdminWatchedPath = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/watched-paths/{id}", func(r *rocco.Request[rocco.NoBody]) (rocco.NoBody, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return rocco.NoBody{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.WatchedPaths](r)
 	if err := store.DeleteWatchedPath(r, id); err != nil {
 		return rocco.NoBody{}, ErrWatchedPathNotFound

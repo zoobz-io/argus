@@ -17,16 +17,15 @@ func TenantToAdminResponse(t *models.Tenant) wire.AdminTenantResponse {
 	}
 }
 
-// TenantsToAdminList converts a cursor result of tenants to an admin list response.
-func TenantsToAdminList(result *models.CursorResult[models.Tenant], limit int) wire.AdminTenantListResponse {
+// TenantsToAdminList converts an offset result of tenants to an admin list response.
+func TenantsToAdminList(result *models.OffsetResult[models.Tenant]) wire.AdminTenantListResponse {
 	items := make([]wire.AdminTenantResponse, len(result.Items))
 	for i, t := range result.Items {
 		items[i] = TenantToAdminResponse(t)
 	}
 	return wire.AdminTenantListResponse{
 		Tenants: items,
-		Cursor:  result.Cursor,
-		Limit:   limit,
-		HasMore: result.HasMore,
+		Offset:  result.Offset,
+		Total:   result.Total,
 	}
 }

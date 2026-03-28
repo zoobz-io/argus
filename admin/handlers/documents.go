@@ -10,23 +10,20 @@ import (
 
 var listAllDocuments = rocco.GET[rocco.NoBody, wire.AdminDocumentListResponse]("/documents", func(r *rocco.Request[rocco.NoBody]) (wire.AdminDocumentListResponse, error) {
 	store := sum.MustUse[contracts.Documents](r)
-	page := cursorPageFromQuery(r.Params)
+	page := offsetPageFromQuery(r.Params)
 	result, err := store.ListDocuments(r, page)
 	if err != nil {
 		return wire.AdminDocumentListResponse{}, err
 	}
-	return transformers.DocumentsToAdminList(result, page.PageSize()), nil
+	return transformers.DocumentsToAdminList(result), nil
 }).
 	WithSummary("List all documents").
 	WithTags("documents").
-	WithQueryParams("cursor", "limit").
+	WithQueryParams("offset", "limit").
 	WithAuthentication()
 
 var getAdminDocument = rocco.GET[rocco.NoBody, wire.AdminDocumentResponse]("/documents/{id}", func(r *rocco.Request[rocco.NoBody]) (wire.AdminDocumentResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.AdminDocumentResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Documents](r)
 	doc, err := store.GetDocument(r, id)
 	if err != nil {
@@ -41,10 +38,7 @@ var getAdminDocument = rocco.GET[rocco.NoBody, wire.AdminDocumentResponse]("/doc
 	WithErrors(ErrDocumentNotFound)
 
 var deleteAdminDocument = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/documents/{id}", func(r *rocco.Request[rocco.NoBody]) (rocco.NoBody, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return rocco.NoBody{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Documents](r)
 	if err := store.DeleteDocument(r, id); err != nil {
 		return rocco.NoBody{}, ErrDocumentNotFound

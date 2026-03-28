@@ -8,15 +8,15 @@ import (
 
 // ProviderListResponse is the API response for a paginated list of providers.
 type ProviderListResponse struct {
-	Cursor    *int64             `json:"cursor,omitempty" description:"Cursor for next page (last ID in this page)"`
 	Providers []ProviderResponse `json:"providers" description:"List of providers"`
+	Offset    int                `json:"offset" description:"Number of results skipped"`
 	Limit     int                `json:"limit" description:"Page size" example:"20"`
-	HasMore   bool               `json:"has_more" description:"Whether more results exist"`
+	Total     int64              `json:"total" description:"Total number of results"`
 }
 
 // OnSend applies boundary masking before the response is marshaled.
 func (r *ProviderListResponse) OnSend(ctx context.Context) error {
-	b := sum.MustUse[*sum.Boundary[ProviderListResponse]](ctx)
+	b := sum.MustUse[sum.Boundary[ProviderListResponse]](ctx)
 	masked, err := b.Send(ctx, *r)
 	if err != nil {
 		return err
@@ -31,10 +31,6 @@ func (r ProviderListResponse) Clone() ProviderListResponse {
 	if r.Providers != nil {
 		c.Providers = make([]ProviderResponse, len(r.Providers))
 		copy(c.Providers, r.Providers)
-	}
-	if r.Cursor != nil {
-		v := *r.Cursor
-		c.Cursor = &v
 	}
 	return c
 }

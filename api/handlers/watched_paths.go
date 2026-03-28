@@ -9,28 +9,22 @@ import (
 )
 
 var listWatchedPaths = rocco.GET[rocco.NoBody, wire.WatchedPathListResponse]("/watched-paths", func(r *rocco.Request[rocco.NoBody]) (wire.WatchedPathListResponse, error) {
-	tid, err := tenantID(r.Identity)
-	if err != nil {
-		return wire.WatchedPathListResponse{}, rocco.ErrBadRequest.WithMessage("invalid tenant")
-	}
+	tid := tenantID(r.Identity)
 	store := sum.MustUse[contracts.WatchedPaths](r)
-	page := cursorPageFromQuery(r.Params)
+	page := offsetPageFromQuery(r.Params)
 	result, err := store.ListWatchedPathsByTenant(r, tid, page)
 	if err != nil {
 		return wire.WatchedPathListResponse{}, err
 	}
-	return transformers.WatchedPathsToListResponse(result, page.PageSize()), nil
+	return transformers.WatchedPathsToListResponse(result), nil
 }).
 	WithSummary("List watched paths").
 	WithTags("watched-paths").
-	WithQueryParams("cursor", "limit").
+	WithQueryParams("offset", "limit").
 	WithAuthentication()
 
 var getWatchedPath = rocco.GET[rocco.NoBody, wire.WatchedPathResponse]("/watched-paths/{id}", func(r *rocco.Request[rocco.NoBody]) (wire.WatchedPathResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.WatchedPathResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.WatchedPaths](r)
 	wp, err := store.GetWatchedPath(r, id)
 	if err != nil {
@@ -45,10 +39,7 @@ var getWatchedPath = rocco.GET[rocco.NoBody, wire.WatchedPathResponse]("/watched
 	WithErrors(ErrWatchedPathNotFound)
 
 var createWatchedPath = rocco.POST[wire.WatchedPathCreateRequest, wire.WatchedPathResponse]("/watched-paths", func(r *rocco.Request[wire.WatchedPathCreateRequest]) (wire.WatchedPathResponse, error) {
-	tid, err := tenantID(r.Identity)
-	if err != nil {
-		return wire.WatchedPathResponse{}, rocco.ErrBadRequest.WithMessage("invalid tenant")
-	}
+	tid := tenantID(r.Identity)
 	store := sum.MustUse[contracts.WatchedPaths](r)
 	wp, err := store.CreateWatchedPath(r, tid, r.Body.ProviderID, r.Body.Path)
 	if err != nil {
@@ -63,10 +54,7 @@ var createWatchedPath = rocco.POST[wire.WatchedPathCreateRequest, wire.WatchedPa
 	WithErrors(rocco.ErrValidationFailed)
 
 var updateWatchedPath = rocco.PUT[wire.WatchedPathCreateRequest, wire.WatchedPathResponse]("/watched-paths/{id}", func(r *rocco.Request[wire.WatchedPathCreateRequest]) (wire.WatchedPathResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.WatchedPathResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.WatchedPaths](r)
 	wp, err := store.UpdateWatchedPath(r, id, r.Body.Path)
 	if err != nil {

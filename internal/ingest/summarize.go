@@ -11,13 +11,35 @@ import (
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 )
 
-func newSummarizeStage() pipz.Chainable[*DocumentContext] {
+func newAnalyzeStage() pipz.Chainable[*DocumentContext] {
 	return pipz.Enrich(
-		SummarizeID,
+		AnalyzeID,
 		func(ctx context.Context, dc *DocumentContext) (*DocumentContext, error) {
-			summarizer := sum.MustUse[intcontracts.Summarizer](ctx)
+			analyzer := sum.MustUse[intcontracts.Analyzer](ctx)
+			topicStore := sum.MustUse[intcontracts.IngestTopics](ctx)
+			tagStore := sum.MustUse[intcontracts.IngestTags](ctx)
 
-			summary, err := summarizer.Summarize(ctx, dc.Content)
+			// Load tenant vocabularies.
+			topics, err := topicStore.ListTopicsByTenant(ctx, dc.Version.TenantID)
+			if err != nil {
+				return dc, err
+			}
+			tags, err := tagStore.ListTagsByTenant(ctx, dc.Version.TenantID)
+			if err != nil {
+				return dc, err
+			}
+
+			// Build name lists for the LLM prompt.
+			topicNames := make([]string, len(topics))
+			for i, t := range topics {
+				topicNames[i] = t.Name
+			}
+			tagNames := make([]string, len(tags))
+			for i, t := range tags {
+				tagNames[i] = t.Name
+			}
+
+			analysis, err := analyzer.Analyze(ctx, dc.Content, topicNames, tagNames)
 			if err != nil {
 				capitan.Warn(ctx, events.IngestSummarizeFailed,
 					events.IngestVersionIDKey.Field(dc.Version.ID),
@@ -25,7 +47,12 @@ func newSummarizeStage() pipz.Chainable[*DocumentContext] {
 				)
 				return dc, err
 			}
-			dc.Summary = summary
+
+			dc.Summary = analysis.Summary
+			dc.Language = analysis.Language
+			dc.Topics = analysis.Topics
+			dc.Tags = analysis.Tags
+
 			capitan.Info(ctx, events.IngestSummarized,
 				events.IngestVersionIDKey.Field(dc.Version.ID),
 			)

@@ -12,8 +12,8 @@ type AdminProviderResponse struct {
 	UpdatedAt time.Time           `json:"updated_at" description:"Last update timestamp"`
 	Type      models.ProviderType `json:"type" description:"Provider type" example:"google_drive"`
 	Name      string              `json:"name" description:"Provider name" example:"My Google Drive"`
-	ID        int64               `json:"id" description:"Provider ID" example:"1"`
-	TenantID  int64               `json:"tenant_id" description:"Owning tenant ID" example:"1"`
+	ID        string              `json:"id" description:"Provider ID" example:"550e8400-e29b-41d4-a716-446655440000"`
+	TenantID  string              `json:"tenant_id" description:"Owning tenant ID" example:"550e8400-e29b-41d4-a716-446655440000"`
 	Active    bool                `json:"active" description:"Whether the provider is active"`
 }
 
@@ -24,10 +24,10 @@ func (p AdminProviderResponse) Clone() AdminProviderResponse {
 
 // AdminProviderListResponse is the wire representation of a paginated provider list.
 type AdminProviderListResponse struct {
-	Cursor    *int64                  `json:"cursor,omitempty" description:"Cursor for next page (last ID in this page)"`
 	Providers []AdminProviderResponse `json:"providers" description:"List of providers"`
+	Offset    int                     `json:"offset" description:"Number of results skipped"`
 	Limit     int                     `json:"limit" description:"Page size" example:"20"`
-	HasMore   bool                    `json:"has_more" description:"Whether more results exist"`
+	Total     int64                   `json:"total" description:"Total number of results"`
 }
 
 // Clone returns a deep copy of the response.
@@ -36,10 +36,6 @@ func (r AdminProviderListResponse) Clone() AdminProviderListResponse {
 	if r.Providers != nil {
 		c.Providers = make([]AdminProviderResponse, len(r.Providers))
 		copy(c.Providers, r.Providers)
-	}
-	if r.Cursor != nil {
-		v := *r.Cursor
-		c.Cursor = &v
 	}
 	return c
 }

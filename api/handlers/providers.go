@@ -9,28 +9,22 @@ import (
 )
 
 var listProviders = rocco.GET[rocco.NoBody, wire.ProviderListResponse]("/providers", func(r *rocco.Request[rocco.NoBody]) (wire.ProviderListResponse, error) {
-	tid, err := tenantID(r.Identity)
-	if err != nil {
-		return wire.ProviderListResponse{}, rocco.ErrBadRequest.WithMessage("invalid tenant")
-	}
+	tid := tenantID(r.Identity)
 	store := sum.MustUse[contracts.Providers](r)
-	page := cursorPageFromQuery(r.Params)
+	page := offsetPageFromQuery(r.Params)
 	result, err := store.ListProvidersByTenant(r, tid, page)
 	if err != nil {
 		return wire.ProviderListResponse{}, err
 	}
-	return transformers.ProvidersToListResponse(result, page.PageSize()), nil
+	return transformers.ProvidersToListResponse(result), nil
 }).
 	WithSummary("List providers").
 	WithTags("providers").
-	WithQueryParams("cursor", "limit").
+	WithQueryParams("offset", "limit").
 	WithAuthentication()
 
 var getProvider = rocco.GET[rocco.NoBody, wire.ProviderResponse]("/providers/{id}", func(r *rocco.Request[rocco.NoBody]) (wire.ProviderResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.ProviderResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Providers](r)
 	provider, err := store.GetProvider(r, id)
 	if err != nil {
@@ -45,10 +39,7 @@ var getProvider = rocco.GET[rocco.NoBody, wire.ProviderResponse]("/providers/{id
 	WithErrors(ErrProviderNotFound)
 
 var createProvider = rocco.POST[wire.ProviderCreateRequest, wire.ProviderResponse]("/providers", func(r *rocco.Request[wire.ProviderCreateRequest]) (wire.ProviderResponse, error) {
-	tid, err := tenantID(r.Identity)
-	if err != nil {
-		return wire.ProviderResponse{}, rocco.ErrBadRequest.WithMessage("invalid tenant")
-	}
+	tid := tenantID(r.Identity)
 	store := sum.MustUse[contracts.Providers](r)
 	provider, err := store.CreateProvider(r, tid, r.Body.Type, r.Body.Name, r.Body.Credentials)
 	if err != nil {
@@ -63,10 +54,7 @@ var createProvider = rocco.POST[wire.ProviderCreateRequest, wire.ProviderRespons
 	WithErrors(rocco.ErrValidationFailed)
 
 var updateProvider = rocco.PUT[wire.ProviderCreateRequest, wire.ProviderResponse]("/providers/{id}", func(r *rocco.Request[wire.ProviderCreateRequest]) (wire.ProviderResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.ProviderResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Providers](r)
 	provider, err := store.UpdateProvider(r, id, r.Body.Type, r.Body.Name, r.Body.Credentials)
 	if err != nil {

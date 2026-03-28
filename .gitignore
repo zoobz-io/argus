@@ -34,3 +34,7 @@ Thumbs.db
 
 # Build artifacts
 dist/
+
+# Compiled binaries in root
+app
+notifier

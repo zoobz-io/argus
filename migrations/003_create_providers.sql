@@ -1,7 +1,7 @@
 -- +goose Up
 CREATE TABLE providers (
-    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     type TEXT NOT NULL,
     name TEXT NOT NULL,
     credentials TEXT NOT NULL,

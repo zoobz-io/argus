@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/zoobz-io/astql"
 	"github.com/zoobz-io/sum"
@@ -16,24 +17,23 @@ type Providers struct {
 }
 
 // NewProviders creates a new providers store.
-func NewProviders(db *sqlx.DB, renderer astql.Renderer) (*Providers, error) {
-	database, err := sum.NewDatabase[models.Provider](db, "providers", renderer)
-	if err != nil {
-		return nil, err
+func NewProviders(db *sqlx.DB, renderer astql.Renderer) *Providers {
+	return &Providers{
+		Database: sum.NewDatabase[models.Provider](db, "providers", renderer),
 	}
-	return &Providers{Database: database}, nil
 }
 
 // GetProvider retrieves a provider by ID.
-func (s *Providers) GetProvider(ctx context.Context, id int64) (*models.Provider, error) {
+func (s *Providers) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
 	return s.Select().
-		Where("id", "=", ":id").
+		Where("id", "=", "id").
 		Exec(ctx, map[string]any{"id": id})
 }
 
 // CreateProvider creates a new provider for a tenant.
-func (s *Providers) CreateProvider(ctx context.Context, tenantID int64, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
+func (s *Providers) CreateProvider(ctx context.Context, tenantID string, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
 	p := &models.Provider{
+		ID:          uuid.New().String(),
 		TenantID:    tenantID,
 		Type:        providerType,
 		Name:        name,
@@ -47,7 +47,7 @@ func (s *Providers) CreateProvider(ctx context.Context, tenantID int64, provider
 }
 
 // UpdateProvider updates an existing provider.
-func (s *Providers) UpdateProvider(ctx context.Context, id int64, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
+func (s *Providers) UpdateProvider(ctx context.Context, id string, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
 	p, err := s.GetProvider(ctx, id)
 	if err != nil {
 		return nil, err
@@ -55,45 +55,42 @@ func (s *Providers) UpdateProvider(ctx context.Context, id int64, providerType m
 	p.Type = providerType
 	p.Name = name
 	p.Credentials = credentials
-	if err := s.Set(ctx, fmt.Sprintf("%d", id), p); err != nil {
+	if err := s.Set(ctx, id, p); err != nil {
 		return nil, fmt.Errorf("updating provider: %w", err)
 	}
 	return p, nil
 }
 
 // DeleteProvider removes a provider.
-func (s *Providers) DeleteProvider(ctx context.Context, id int64) error {
-	return s.Delete(ctx, fmt.Sprintf("%d", id))
+func (s *Providers) DeleteProvider(ctx context.Context, id string) error {
+	return s.Delete(ctx, id)
 }
 
 // ListProviders retrieves a paginated list of all providers.
-func (s *Providers) ListProviders(ctx context.Context, page models.CursorPage) (*models.CursorResult[models.Provider], error) {
-	limit := page.PageSize()
-	q := s.Query().OrderBy("id", "ASC").Limit(limit + 1)
-	params := map[string]any{}
-	if page.Cursor != nil {
-		q = q.Where("id", ">", ":cursor")
-		params["cursor"] = *page.Cursor
-	}
-	items, err := q.Exec(ctx, params)
+func (s *Providers) ListProviders(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Provider], error) {
+	items, err := s.Query().
+		OrderBy("created_at", "ASC").
+		OrderBy("id", "ASC").
+		Limit(page.PageSize()).
+		Offset(page.Offset).
+		Exec(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	return cursorResult(items, limit), nil
+	return &models.OffsetResult[models.Provider]{Items: items, Offset: page.Offset}, nil
 }
 
-// ListProvidersByTenant retrieves providers for a specific tenant using cursor pagination.
-func (s *Providers) ListProvidersByTenant(ctx context.Context, tenantID int64, page models.CursorPage) (*models.CursorResult[models.Provider], error) {
-	limit := page.PageSize()
-	q := s.Query().Where("tenant_id", "=", ":tenant_id").OrderBy("id", "ASC").Limit(limit + 1)
-	params := map[string]any{"tenant_id": tenantID}
-	if page.Cursor != nil {
-		q = q.Where("id", ">", ":cursor")
-		params["cursor"] = *page.Cursor
-	}
-	items, err := q.Exec(ctx, params)
+// ListProvidersByTenant retrieves providers for a specific tenant using offset/limit pagination.
+func (s *Providers) ListProvidersByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Provider], error) {
+	items, err := s.Query().
+		Where("tenant_id", "=", "tenant_id").
+		OrderBy("created_at", "ASC").
+		OrderBy("id", "ASC").
+		Limit(page.PageSize()).
+		Offset(page.Offset).
+		Exec(ctx, map[string]any{"tenant_id": tenantID})
 	if err != nil {
 		return nil, err
 	}
-	return cursorResult(items, limit), nil
+	return &models.OffsetResult[models.Provider]{Items: items, Offset: page.Offset}, nil
 }
