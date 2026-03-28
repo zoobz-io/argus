@@ -6,6 +6,7 @@ import (
 
 	"github.com/zoobz-io/sum"
 
+	"github.com/zoobz-io/argus/config"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/proto"
 )
@@ -16,7 +17,10 @@ import (
 func Convert(inputMime string) Func {
 	return func(ctx context.Context, data []byte) (string, error) {
 		converter := sum.MustUse[intcontracts.Converter](ctx)
-		resp, err := converter.ConvertDocument(ctx, &proto.ConvertRequest{
+		cfg := sum.MustUse[config.Convert](ctx)
+		callCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
+		resp, err := converter.ConvertDocument(callCtx, &proto.ConvertRequest{
 			Document: data,
 			MimeType: inputMime,
 		})

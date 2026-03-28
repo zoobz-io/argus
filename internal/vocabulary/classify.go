@@ -8,6 +8,7 @@ import (
 	"github.com/zoobz-io/pipz"
 	"github.com/zoobz-io/sum"
 
+	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/proto"
@@ -19,10 +20,13 @@ var ClassifyID = pipz.NewIdentity("vocabulary-classify", "Classify vocabulary fo
 func newClassifyStage() pipz.Chainable[*Context] {
 	return pipz.Apply(ClassifyID, func(ctx context.Context, vc *Context) (*Context, error) {
 		classifier := sum.MustUse[intcontracts.Classifier](ctx)
+		cfg := sum.MustUse[config.Classify](ctx)
+		callCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
 
 		// Classify the combined name + description as a single text block.
 		text := vc.Name + ": " + vc.Description
-		resp, err := classifier.ClassifyText(ctx, &proto.ClassifyRequest{
+		resp, err := classifier.ClassifyText(callCtx, &proto.ClassifyRequest{
 			Text: text,
 		})
 		if err != nil {

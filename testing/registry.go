@@ -9,6 +9,7 @@ import (
 
 	admincontracts "github.com/zoobz-io/argus/admin/contracts"
 	apicontracts "github.com/zoobz-io/argus/api/contracts"
+	"github.com/zoobz-io/argus/config"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/rocco"
@@ -112,6 +113,12 @@ func SetupRegistry(t *testing.T, opts ...RegistryOption) context.Context {
 	sum.Reset()
 	sum.New()
 	k := sum.Start()
+
+	// Load configs with defaults for gRPC timeout support.
+	bgCtx := context.Background()
+	_ = sum.Config[config.OCR](bgCtx, k, nil)
+	_ = sum.Config[config.Convert](bgCtx, k, nil)
+	_ = sum.Config[config.Classify](bgCtx, k, nil)
 
 	for _, opt := range opts {
 		opt(k)

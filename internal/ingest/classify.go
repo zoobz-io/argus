@@ -8,6 +8,7 @@ import (
 	"github.com/zoobz-io/pipz"
 	"github.com/zoobz-io/sum"
 
+	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/proto"
@@ -22,8 +23,11 @@ const InjectionThreshold = 0.5
 func newClassifyStage() pipz.Chainable[*DocumentContext] {
 	return pipz.Apply(ClassifyID, func(ctx context.Context, dc *DocumentContext) (*DocumentContext, error) {
 		classifier := sum.MustUse[intcontracts.Classifier](ctx)
+		cfg := sum.MustUse[config.Classify](ctx)
+		callCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
 
-		resp, err := classifier.ClassifyText(ctx, &proto.ClassifyRequest{
+		resp, err := classifier.ClassifyText(callCtx, &proto.ClassifyRequest{
 			Text: dc.Content,
 		})
 		if err != nil {
