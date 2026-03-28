@@ -2,7 +2,6 @@ package extract
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -15,7 +14,7 @@ import (
 // Parses each slide XML with structure-aware handling of text frames
 // and paragraphs, preserving slide boundaries.
 func PPTX(_ context.Context, data []byte) (string, error) {
-	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	r, err := safeZIPReader(data)
 	if err != nil {
 		return "", fmt.Errorf("opening pptx archive: %w", err)
 	}
@@ -33,7 +32,7 @@ func PPTX(_ context.Context, data []byte) (string, error) {
 
 	var parts []string
 	for _, f := range slides {
-		rc, err := f.Open()
+		rc, err := safeOpen(f)
 		if err != nil {
 			return "", fmt.Errorf("opening %s: %w", f.Name, err)
 		}

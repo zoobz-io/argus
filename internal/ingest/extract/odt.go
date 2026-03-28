@@ -1,8 +1,6 @@
 package extract
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -21,15 +19,15 @@ func ODT(_ context.Context, data []byte) (string, error) {
 	return parseODFText(r)
 }
 
-// odfContentReader opens the content.xml from an ODF archive.
+// odfContentReader opens the content.xml from an ODF archive with safety checks.
 func odfContentReader(data []byte) (io.ReadCloser, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := safeZIPReader(data)
 	if err != nil {
 		return nil, fmt.Errorf("opening archive: %w", err)
 	}
 	for _, f := range zr.File {
 		if f.Name == "content.xml" {
-			return f.Open()
+			return safeOpen(f)
 		}
 	}
 	return nil, fmt.Errorf("content.xml not found in archive")
