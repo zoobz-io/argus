@@ -11,18 +11,12 @@ import (
 	"github.com/zoobz-io/rocco"
 )
 
-// zitadelOrgIDClaim is the JWT claim key for the user's primary organization ID.
-const zitadelOrgIDClaim = "urn:zitadel:iam:user:resourceowner:id"
-
-// zitadelRolesClaim is the JWT claim key where Zitadel stores project role grants.
-const zitadelRolesClaim = "urn:zitadel:iam:org:project:roles"
-
 // claims maps the Zitadel-specific JWT claims we extract.
 type claims struct {
-	Email  string                       `json:"email"`
-	OrgID  string                       `json:"urn:zitadel:iam:user:resourceowner:id"`
-	Scope  string                       `json:"scope"`
-	Roles  map[string]map[string]string `json:"urn:zitadel:iam:org:project:roles"`
+	Roles map[string]map[string]string `json:"urn:zitadel:iam:org:project:roles"`
+	Email string                       `json:"email"`
+	OrgID string                       `json:"urn:zitadel:iam:user:resourceowner:id"`
+	Scope string                       `json:"scope"`
 }
 
 // NewAuthenticator creates a rocco-compatible authenticator function that validates
@@ -59,25 +53,30 @@ func NewAuthenticator(ctx context.Context, issuer, audience string) (func(contex
 			return nil, fmt.Errorf("failed to parse claims: %w", err)
 		}
 
-		var roles []string
-		for role := range c.Roles {
-			roles = append(roles, role)
-		}
-		sort.Strings(roles)
-
-		var scopes []string
-		if c.Scope != "" {
-			scopes = strings.Split(c.Scope, " ")
-		}
-
-		return &ZitadelIdentity{
-			sub:      idToken.Subject,
-			tenantID: c.OrgID,
-			email:    c.Email,
-			roles:    roles,
-			scopes:   scopes,
-		}, nil
+		return identityFromClaims(idToken.Subject, &c), nil
 	}, nil
+}
+
+// identityFromClaims maps parsed Zitadel JWT claims to a ZitadelIdentity.
+func identityFromClaims(subject string, c *claims) *ZitadelIdentity {
+	roles := make([]string, 0, len(c.Roles))
+	for role := range c.Roles {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+
+	var scopes []string
+	if c.Scope != "" {
+		scopes = strings.Split(c.Scope, " ")
+	}
+
+	return &ZitadelIdentity{
+		sub:      subject,
+		tenantID: c.OrgID,
+		email:    c.Email,
+		roles:    roles,
+		scopes:   scopes,
+	}
 }
 
 // extractBearerToken pulls the JWT from the Authorization header.
