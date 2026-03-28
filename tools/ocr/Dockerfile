@@ -22,8 +22,11 @@ RUN apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-data-eng
 
+RUN adduser -D -u 1000 sidecar
+
 COPY --from=builder /ocr-server /usr/local/bin/ocr-server
 COPY --from=builder /go/bin/grpc-health-probe /usr/local/bin/grpc-health-probe
 
+USER sidecar
 EXPOSE 50051
 CMD ["ocr-server"]

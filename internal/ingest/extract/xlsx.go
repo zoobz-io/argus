@@ -21,7 +21,10 @@ func XLSX(_ context.Context, data []byte) (string, error) {
 
 	var sheets []string
 	for _, sheet := range f.GetSheetList() {
-		rows, _ := f.GetRows(sheet)
+		rows, err := f.GetRows(sheet)
+		if err != nil {
+			return "", fmt.Errorf("reading sheet %q: %w", sheet, err)
+		}
 
 		var lines []string
 		for _, row := range rows {

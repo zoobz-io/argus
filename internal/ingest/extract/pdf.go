@@ -47,6 +47,9 @@ func pdfText(data []byte) (string, error) {
 		return "", fmt.Errorf("extracting text: %w", err)
 	}
 
-	text, _ := io.ReadAll(plainText)
+	text, err := io.ReadAll(plainText)
+	if err != nil {
+		return "", fmt.Errorf("reading text: %w", err)
+	}
 	return string(text), nil
 }

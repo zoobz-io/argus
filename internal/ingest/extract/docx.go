@@ -21,7 +21,10 @@ func DOCX(_ context.Context, data []byte) (string, error) {
 
 	for _, f := range r.File {
 		if f.Name == "word/document.xml" {
-			rc, _ := f.Open()
+			rc, err := f.Open()
+			if err != nil {
+				return "", fmt.Errorf("opening document.xml: %w", err)
+			}
 			defer func() { _ = rc.Close() }()
 			return parseWordXML(rc)
 		}

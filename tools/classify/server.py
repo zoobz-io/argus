@@ -38,7 +38,16 @@ class ClassifyServicer(classify_pb2_grpc.ClassifyServiceServicer):
         if not request.text:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "empty text")
 
-        result = self.pipe(request.text)[0]
+        try:
+            result = self.pipe(request.text)[0]
+        except Exception as e:
+            log.error("model inference failed: %s", e)
+            context.abort(
+                grpc.StatusCode.INTERNAL,
+                f"model inference failed: {e}",
+            )
+            return classify_pb2.ClassifyResponse()
+
         label = result["label"]  # "SAFE" or "INJECTION"
         score = result["score"]
 

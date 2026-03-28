@@ -5,10 +5,36 @@ package argustest
 import (
 	"context"
 
+	admincontracts "github.com/zoobz-io/argus/admin/contracts"
+	apicontracts "github.com/zoobz-io/argus/api/contracts"
+	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/proto"
 	"github.com/zoobz-io/vex"
 	"google.golang.org/grpc"
+)
+
+// Compile-time interface assertions — prevents mock drift.
+var (
+	_ admincontracts.Tenants              = (*MockTenants)(nil)
+	_ apicontracts.Tenants                = (*MockTenants)(nil)
+	_ admincontracts.Providers            = (*MockProviders)(nil)
+	_ apicontracts.Providers              = (*MockProviders)(nil)
+	_ admincontracts.WatchedPaths         = (*MockWatchedPaths)(nil)
+	_ apicontracts.WatchedPaths           = (*MockWatchedPaths)(nil)
+	_ admincontracts.Documents            = (*MockDocuments)(nil)
+	_ apicontracts.Documents              = (*MockDocuments)(nil)
+	_ admincontracts.DocumentVersions     = (*MockDocumentVersions)(nil)
+	_ apicontracts.DocumentVersions       = (*MockDocumentVersions)(nil)
+	_ admincontracts.DocumentVersionSearch = (*MockDocumentVersionSearch)(nil)
+	_ apicontracts.DocumentVersionSearch  = (*MockDocumentVersionSearch)(nil)
+	_ admincontracts.Topics               = (*MockTopics)(nil)
+	_ apicontracts.Topics                 = (*MockTopics)(nil)
+	_ admincontracts.Tags                 = (*MockTags)(nil)
+	_ apicontracts.Tags                   = (*MockTags)(nil)
+	_ apicontracts.Ingest                 = (*MockIngest)(nil)
+	_ apicontracts.QueryEmbedder          = (*MockQueryEmbedder)(nil)
+	_ intcontracts.OCR                    = (*MockOCR)(nil)
 )
 
 // MockTenants satisfies both api/contracts.Tenants and admin/contracts.Tenants.

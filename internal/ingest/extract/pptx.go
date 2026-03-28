@@ -33,7 +33,10 @@ func PPTX(_ context.Context, data []byte) (string, error) {
 
 	var parts []string
 	for _, f := range slides {
-		rc, _ := f.Open()
+		rc, err := f.Open()
+		if err != nil {
+			return "", fmt.Errorf("opening %s: %w", f.Name, err)
+		}
 		text, _ := parseSlideXML(rc)
 		_ = rc.Close()
 		if text != "" {

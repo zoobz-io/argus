@@ -22,8 +22,12 @@ RUN apk add --no-cache \
     libreoffice \
     font-noto
 
+RUN adduser -D -u 1000 sidecar
+RUN mkdir -p /tmp/convert && chown sidecar:sidecar /tmp/convert
+
 COPY --from=builder /convert-server /usr/local/bin/convert-server
 COPY --from=builder /go/bin/grpc-health-probe /usr/local/bin/grpc-health-probe
 
+USER sidecar
 EXPOSE 50052
 CMD ["convert-server"]
