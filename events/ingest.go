@@ -24,6 +24,7 @@ var (
 	IngestVersionIDKey  = capitan.NewStringKey("version_id")
 	IngestDocumentIDKey = capitan.NewStringKey("document_id")
 	IngestTenantIDKey   = capitan.NewStringKey("tenant_id")
+	IngestJobIDKey      = capitan.NewStringKey("job_id")
 	IngestMimeTypeKey   = capitan.NewStringKey("mime_type")
 	IngestErrorKey      = capitan.NewErrorKey("error")
 )

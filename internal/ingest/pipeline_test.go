@@ -116,7 +116,7 @@ func TestPipeline_Ingest_FullSuccess(t *testing.T) {
 		},
 	}
 	jobs := &mockIngestJobs{
-		OnCreateJob: func(_ context.Context, _, _, _ string) (*models.Job, error) {
+		OnGetJob: func(_ context.Context, id string) (*models.Job, error) {
 			return defaultJob(), nil
 		},
 		OnUpdateJobStatus: func(_ context.Context, _ string, _ models.JobStatus, _ *string) error {
@@ -131,9 +131,46 @@ func TestPipeline_Ingest_FullSuccess(t *testing.T) {
 		sequence: pipz.NewSequence[*DocumentContext](PipelineID),
 	}
 
-	err := p.Ingest(ctx, "ver-1")
+	err := p.Ingest(ctx, "job-1", "ver-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPipeline_Ingest_CompletedStatusUpdateError(t *testing.T) {
+	versions := &mockIngestVersions{
+		OnGetDocumentVersion: func(_ context.Context, _ string) (*models.DocumentVersion, error) {
+			return defaultVersion(), nil
+		},
+	}
+	documents := &mockIngestDocuments{
+		OnGetDocument: func(_ context.Context, _ string) (*models.Document, error) {
+			return defaultDocument(), nil
+		},
+	}
+	jobs := &mockIngestJobs{
+		OnGetJob: func(_ context.Context, _ string) (*models.Job, error) {
+			return defaultJob(), nil
+		},
+		OnUpdateJobStatus: func(_ context.Context, _ string, status models.JobStatus, _ *string) error {
+			if status == models.JobCompleted {
+				return errors.New("db write failed")
+			}
+			return nil
+		},
+	}
+
+	ctx := setupPipelineRegistry(t, withVersions(versions), withDocuments(documents), withJobs(jobs))
+	p := &Pipeline{
+		sequence: pipz.NewSequence[*DocumentContext](PipelineID),
+	}
+
+	err := p.Ingest(ctx, "job-1", "ver-1")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "updating job to completed") {
+		t.Errorf("error should mention updating job to completed, got %q", err.Error())
 	}
 }
 
@@ -153,7 +190,7 @@ func TestPipeline_Ingest_VersionFetchError(t *testing.T) {
 	ctx := setupPipelineRegistry(t, withVersions(versions), withDocuments(documents), withJobs(jobs))
 	p := New()
 
-	err := p.Ingest(ctx, "ver-1")
+	err := p.Ingest(ctx, "job-1", "ver-1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -178,7 +215,7 @@ func TestPipeline_Ingest_DocumentFetchError(t *testing.T) {
 	ctx := setupPipelineRegistry(t, withVersions(versions), withDocuments(documents), withJobs(jobs))
 	p := New()
 
-	err := p.Ingest(ctx, "ver-1")
+	err := p.Ingest(ctx, "job-1", "ver-1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -187,7 +224,7 @@ func TestPipeline_Ingest_DocumentFetchError(t *testing.T) {
 	}
 }
 
-func TestPipeline_Ingest_CreateJobError(t *testing.T) {
+func TestPipeline_Ingest_GetJobError(t *testing.T) {
 	versions := &mockIngestVersions{
 		OnGetDocumentVersion: func(_ context.Context, _ string) (*models.DocumentVersion, error) {
 			return defaultVersion(), nil
@@ -199,20 +236,20 @@ func TestPipeline_Ingest_CreateJobError(t *testing.T) {
 		},
 	}
 	jobs := &mockIngestJobs{
-		OnCreateJob: func(_ context.Context, _, _, _ string) (*models.Job, error) {
-			return nil, errors.New("job creation failed")
+		OnGetJob: func(_ context.Context, _ string) (*models.Job, error) {
+			return nil, errors.New("job not found")
 		},
 	}
 
 	ctx := setupPipelineRegistry(t, withVersions(versions), withDocuments(documents), withJobs(jobs))
 	p := New()
 
-	err := p.Ingest(ctx, "ver-1")
+	err := p.Ingest(ctx, "job-1", "ver-1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "creating job") {
-		t.Errorf("error should mention creating job, got %q", err.Error())
+	if !strings.Contains(err.Error(), "fetching job") {
+		t.Errorf("error should mention fetching job, got %q", err.Error())
 	}
 }
 
@@ -228,7 +265,7 @@ func TestPipeline_Ingest_JobStatusUpdateError(t *testing.T) {
 		},
 	}
 	jobs := &mockIngestJobs{
-		OnCreateJob: func(_ context.Context, _, _, _ string) (*models.Job, error) {
+		OnGetJob: func(_ context.Context, _ string) (*models.Job, error) {
 			return defaultJob(), nil
 		},
 		OnUpdateJobStatus: func(_ context.Context, _ string, status models.JobStatus, _ *string) error {
@@ -242,7 +279,7 @@ func TestPipeline_Ingest_JobStatusUpdateError(t *testing.T) {
 	ctx := setupPipelineRegistry(t, withVersions(versions), withDocuments(documents), withJobs(jobs))
 	p := New()
 
-	err := p.Ingest(ctx, "ver-1")
+	err := p.Ingest(ctx, "job-1", "ver-1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -252,8 +289,6 @@ func TestPipeline_Ingest_JobStatusUpdateError(t *testing.T) {
 }
 
 func TestPipeline_Ingest_PipelineProcessError(t *testing.T) {
-	// The sequence will fail at the extract stage (no OCR/TextExtractor registered).
-	// This tests the error handling path: job should be marked failed.
 	var failedJobID string
 	var failedStatus models.JobStatus
 	var failedErr *string
@@ -272,11 +307,10 @@ func TestPipeline_Ingest_PipelineProcessError(t *testing.T) {
 		},
 	}
 	jobs := &mockIngestJobs{
-		OnCreateJob: func(_ context.Context, _, _, _ string) (*models.Job, error) {
+		OnGetJob: func(_ context.Context, _ string) (*models.Job, error) {
 			return defaultJob(), nil
 		},
 		OnUpdateJobStatus: func(_ context.Context, id string, status models.JobStatus, jobErr *string) error {
-			// Capture the last call (the failure update, not the processing update).
 			failedJobID = id
 			failedStatus = status
 			failedErr = jobErr
@@ -287,7 +321,7 @@ func TestPipeline_Ingest_PipelineProcessError(t *testing.T) {
 	ctx := setupPipelineRegistry(t, withVersions(versions), withDocuments(documents), withJobs(jobs))
 	p := New()
 
-	err := p.Ingest(ctx, "ver-1")
+	err := p.Ingest(ctx, "job-1", "ver-1")
 	if err == nil {
 		t.Fatal("expected error from pipeline failure")
 	}

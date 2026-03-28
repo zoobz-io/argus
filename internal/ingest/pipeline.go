@@ -51,7 +51,8 @@ func New() *Pipeline {
 }
 
 // Ingest processes a document version through the full ingestion pipeline.
-func (p *Pipeline) Ingest(ctx context.Context, versionID string) error {
+// jobID is the pre-created job identifier from the enqueuer.
+func (p *Pipeline) Ingest(ctx context.Context, jobID, versionID string) error {
 	versions := sum.MustUse[intcontracts.IngestVersions](ctx)
 	documents := sum.MustUse[intcontracts.IngestDocuments](ctx)
 	jobs := sum.MustUse[intcontracts.IngestJobs](ctx)
@@ -66,9 +67,9 @@ func (p *Pipeline) Ingest(ctx context.Context, versionID string) error {
 		return fmt.Errorf("fetching document: %w", err)
 	}
 
-	job, err := jobs.CreateJob(ctx, version.ID, version.DocumentID, version.TenantID)
+	job, err := jobs.GetJob(ctx, jobID)
 	if err != nil {
-		return fmt.Errorf("creating job: %w", err)
+		return fmt.Errorf("fetching job: %w", err)
 	}
 
 	if statusErr := jobs.UpdateJobStatus(ctx, job.ID, models.JobProcessing, nil); statusErr != nil {
@@ -79,6 +80,7 @@ func (p *Pipeline) Ingest(ctx context.Context, versionID string) error {
 		events.IngestVersionIDKey.Field(version.ID),
 		events.IngestDocumentIDKey.Field(version.DocumentID),
 		events.IngestTenantIDKey.Field(version.TenantID),
+		events.IngestJobIDKey.Field(job.ID),
 		events.IngestMimeTypeKey.Field(document.MimeType),
 	)
 
@@ -96,15 +98,21 @@ func (p *Pipeline) Ingest(ctx context.Context, versionID string) error {
 			events.IngestVersionIDKey.Field(version.ID),
 			events.IngestDocumentIDKey.Field(version.DocumentID),
 			events.IngestTenantIDKey.Field(version.TenantID),
+			events.IngestJobIDKey.Field(job.ID),
 			events.IngestErrorKey.Field(err),
 		)
 		return fmt.Errorf("pipeline failed: %w", err)
+	}
+
+	if err := jobs.UpdateJobStatus(ctx, job.ID, models.JobCompleted, nil); err != nil {
+		return fmt.Errorf("updating job to completed: %w", err)
 	}
 
 	capitan.Info(ctx, events.IngestCompleted,
 		events.IngestVersionIDKey.Field(version.ID),
 		events.IngestDocumentIDKey.Field(version.DocumentID),
 		events.IngestTenantIDKey.Field(version.TenantID),
+		events.IngestJobIDKey.Field(job.ID),
 	)
 	return nil
 }

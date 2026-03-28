@@ -95,7 +95,8 @@ func TestAnalyzeStage_HappyPath(t *testing.T) {
 	stage := newAnalyzeStage()
 
 	dc := &DocumentContext{
-		Version: &models.DocumentVersion{ID: "ver-1", TenantID: "tenant-1"},
+		Version: &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1", TenantID: "tenant-1"},
+		Job:     &models.Job{ID: "job-1"},
 		Content: "test content",
 	}
 
@@ -139,7 +140,8 @@ func TestAnalyzeStage_TopicStoreError(t *testing.T) {
 	stage := newAnalyzeStage()
 
 	dc := &DocumentContext{
-		Version: &models.DocumentVersion{ID: "ver-1", TenantID: "tenant-1"},
+		Version: &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1", TenantID: "tenant-1"},
+		Job:     &models.Job{ID: "job-1"},
 		Content: "test content",
 	}
 
@@ -175,7 +177,8 @@ func TestAnalyzeStage_TagStoreError(t *testing.T) {
 	stage := newAnalyzeStage()
 
 	dc := &DocumentContext{
-		Version: &models.DocumentVersion{ID: "ver-1", TenantID: "tenant-1"},
+		Version: &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1", TenantID: "tenant-1"},
+		Job:     &models.Job{ID: "job-1"},
 		Content: "test content",
 	}
 
@@ -210,7 +213,8 @@ func TestAnalyzeStage_AnalyzerError(t *testing.T) {
 	stage := newAnalyzeStage()
 
 	dc := &DocumentContext{
-		Version: &models.DocumentVersion{ID: "ver-1", TenantID: "tenant-1"},
+		Version: &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1", TenantID: "tenant-1"},
+		Job:     &models.Job{ID: "job-1"},
 		Content: "test content",
 	}
 
@@ -251,7 +255,8 @@ func TestAnalyzeStage_EmptyVocabularies(t *testing.T) {
 	stage := newAnalyzeStage()
 
 	dc := &DocumentContext{
-		Version: &models.DocumentVersion{ID: "ver-1", TenantID: "tenant-1"},
+		Version: &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1", TenantID: "tenant-1"},
+		Job:     &models.Job{ID: "job-1"},
 		Content: "test content",
 	}
 

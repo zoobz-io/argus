@@ -48,6 +48,12 @@ func WithAPITags(m *MockTags) RegistryOption {
 func WithAPIIngest(m *MockIngest) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.Ingest](k, m) }
 }
+func WithAPIIngestEnqueuer(m *MockIngestEnqueuer) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.IngestEnqueuer](k, m) }
+}
+func WithAPIJobReader(m *MockJobReader) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.JobReader](k, m) }
+}
 func WithAPIQueryEmbedder(m *MockQueryEmbedder) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.QueryEmbedder](k, m) }
 }

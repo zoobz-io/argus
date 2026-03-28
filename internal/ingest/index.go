@@ -18,7 +18,6 @@ func newIndexStage() pipz.Chainable[*DocumentContext] {
 		IndexID,
 		func(ctx context.Context, dc *DocumentContext) (*DocumentContext, error) {
 			search := sum.MustUse[intcontracts.IngestSearch](ctx)
-			jobs := sum.MustUse[intcontracts.IngestJobs](ctx)
 
 			idx := &models.DocumentVersionIndex{
 				VersionID:    dc.Version.ID,
@@ -41,13 +40,10 @@ func newIndexStage() pipz.Chainable[*DocumentContext] {
 				return dc, fmt.Errorf("indexing version: %w", err)
 			}
 
-			if err := jobs.UpdateJobStatus(ctx, dc.Job.ID, models.JobCompleted, nil); err != nil {
-				return dc, fmt.Errorf("updating job status: %w", err)
-			}
-
 			capitan.Info(ctx, events.IngestIndexed,
 				events.IngestVersionIDKey.Field(dc.Version.ID),
 				events.IngestDocumentIDKey.Field(dc.Version.DocumentID),
+				events.IngestJobIDKey.Field(dc.Job.ID),
 			)
 			return dc, nil
 		},

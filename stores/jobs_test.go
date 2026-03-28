@@ -60,6 +60,86 @@ func TestJobs_CreateJob_Error(t *testing.T) {
 	mock.AssertExpectations()
 }
 
+func TestJobs_GetJob(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestJobs(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.Job{
+		{ID: "job-1", Status: models.JobPending, VersionID: "ver-1", DocumentID: "doc-1", TenantID: "t-1", CreatedAt: ts, UpdatedAt: ts},
+	})
+
+	job, err := store.GetJob(context.Background(), "job-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if job.ID != "job-1" {
+		t.Errorf("ID: got %q, want %q", job.ID, "job-1")
+	}
+	mock.AssertExpectations()
+}
+
+func TestJobs_GetJob_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestJobs(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("not found"))
+
+	_, err := store.GetJob(context.Background(), "job-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestJobs_GetJobByTenant(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestJobs(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.Job{
+		{ID: "job-1", Status: models.JobProcessing, VersionID: "ver-1", DocumentID: "doc-1", TenantID: "t-1", CreatedAt: ts, UpdatedAt: ts},
+	})
+
+	job, err := store.GetJobByTenant(context.Background(), "job-1", "t-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if job.ID != "job-1" {
+		t.Errorf("ID: got %q, want %q", job.ID, "job-1")
+	}
+	if job.TenantID != "t-1" {
+		t.Errorf("TenantID: got %q, want %q", job.TenantID, "t-1")
+	}
+	mock.AssertExpectations()
+}
+
+func TestJobs_GetJobByTenant_NotFound(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestJobs(t, mock)
+
+	mock.ExpectQuery().WithRows([]models.Job{})
+
+	_, err := store.GetJobByTenant(context.Background(), "job-1", "wrong-tenant")
+	if err == nil {
+		t.Fatal("expected error for tenant mismatch")
+	}
+	mock.AssertExpectations()
+}
+
+func TestJobs_GetJobByTenant_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestJobs(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("db error"))
+
+	_, err := store.GetJobByTenant(context.Background(), "job-1", "t-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
 func TestJobs_UpdateJobStatus(t *testing.T) {
 	mock := soytesting.NewMockDB(t)
 	store := newTestJobs(t, mock)

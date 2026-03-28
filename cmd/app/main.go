@@ -27,8 +27,6 @@ import (
 	"github.com/zoobz-io/sum"
 	"github.com/zoobz-io/vex"
 	vexopenai "github.com/zoobz-io/vex/openai"
-	zynopenai "github.com/zoobz-io/zyn/openai"
-	"github.com/zoobz-io/zyn"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -83,17 +81,8 @@ func run() error {
 	if err := sum.Config[config.OpenSearch](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load opensearch config: %w", err)
 	}
-	if err := sum.Config[config.OCR](ctx, k, nil); err != nil {
-		return fmt.Errorf("failed to load ocr config: %w", err)
-	}
-	if err := sum.Config[config.Convert](ctx, k, nil); err != nil {
-		return fmt.Errorf("failed to load convert config: %w", err)
-	}
 	if err := sum.Config[config.Classify](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load classify config: %w", err)
-	}
-	if err := sum.Config[config.LLM](ctx, k, nil); err != nil {
-		return fmt.Errorf("failed to load llm config: %w", err)
 	}
 	if err := sum.Config[config.Embedding](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load embedding config: %w", err)
@@ -169,28 +158,7 @@ func run() error {
 	log.Println("opensearch connected")
 	capitan.Emit(ctx, events.StartupOpenSearchConnected)
 
-	// OCR (gRPC)
-	ocrCfg := sum.MustUse[config.OCR](ctx)
-	ocrConn, err := grpc.NewClient(ocrCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return fmt.Errorf("failed to connect to ocr service: %w", err)
-	}
-	defer func() { _ = ocrConn.Close() }()
-	ocrClient := proto.NewOCRServiceClient(ocrConn)
-	log.Println("ocr service connected")
-	capitan.Emit(ctx, events.StartupOCRConnected)
-
-	// Convert (gRPC)
-	convertCfg := sum.MustUse[config.Convert](ctx)
-	convertConn, err := grpc.NewClient(convertCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return fmt.Errorf("failed to connect to convert service: %w", err)
-	}
-	defer func() { _ = convertConn.Close() }()
-	convertClient := proto.NewConvertServiceClient(convertConn)
-	log.Println("convert service connected")
-
-	// Classify (gRPC)
+	// Classify (gRPC) — needed for vocabulary injection classification.
 	classifyCfg := sum.MustUse[config.Classify](ctx)
 	classifyConn, err := grpc.NewClient(classifyCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -200,27 +168,7 @@ func run() error {
 	classifyClient := proto.NewClassifyServiceClient(classifyConn)
 	log.Println("classify service connected")
 
-	// LLM (zyn)
-	llmCfg := sum.MustUse[config.LLM](ctx)
-	llmProvider := zynopenai.New(zynopenai.Config{
-		APIKey:  llmCfg.APIKey,
-		Model:   llmCfg.Model,
-		BaseURL: llmCfg.BaseURL,
-	})
-	analyzerSynapse, err := zyn.Extract[models.DocumentAnalysis](
-		"Analyze the document content and extract: a concise summary paragraph, the ISO 639-1 language code, and any matching topics and tags from the provided vocabulary lists. Only select topics and tags that clearly apply to the content.",
-		llmProvider,
-		zyn.WithRetry(3),
-		zyn.WithTimeout(60*time.Second),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create analyzer synapse: %w", err)
-	}
-	analyzer := ingest.NewSynapseAnalyzer(analyzerSynapse)
-
-	log.Println("llm provider initialized")
-
-	// Embeddings (vex)
+	// Embeddings (vex) — needed for search query embedding.
 	embeddingCfg := sum.MustUse[config.Embedding](ctx)
 	embeddingProvider := vexopenai.New(vexopenai.Config{
 		APIKey:     embeddingCfg.APIKey,
@@ -252,6 +200,7 @@ func run() error {
 	sum.Register[apicontracts.QueryEmbedder](k, embedService)
 	sum.Register[apicontracts.Topics](k, allStores.Topics)
 	sum.Register[apicontracts.Tags](k, allStores.Tags)
+	sum.Register[apicontracts.JobReader](k, allStores.Jobs)
 
 	// Admin API contracts
 	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
@@ -263,22 +212,16 @@ func run() error {
 	sum.Register[admincontracts.Topics](k, allStores.Topics)
 	sum.Register[admincontracts.Tags](k, allStores.Tags)
 
-	// Internal contracts (ingestion pipeline)
+	// Internal contracts — enqueuer needs versions, documents, jobs.
+	// Classifier needed by vocabulary pipeline.
 	sum.Register[intcontracts.IngestVersions](k, allStores.DocumentVersions)
 	sum.Register[intcontracts.IngestDocuments](k, allStores.Documents)
-	sum.Register[intcontracts.IngestSearch](k, allStores.DocumentVersionSearch)
 	sum.Register[intcontracts.IngestJobs](k, allStores.Jobs)
-	sum.Register[intcontracts.IngestTopics](k, allStores.Topics)
-	sum.Register[intcontracts.IngestTags](k, allStores.Tags)
-	sum.Register[intcontracts.OCR](k, ocrClient)
-	sum.Register[intcontracts.Converter](k, convertClient)
 	sum.Register[intcontracts.Classifier](k, classifyClient)
-	sum.Register[intcontracts.Analyzer](k, analyzer)
-	sum.Register[intcontracts.Embedder](k, embedService)
 
-	// Pipeline contracts
-	pipeline := ingest.New()
-	sum.Register[apicontracts.Ingest](k, pipeline)
+	// Async ingestion enqueuer
+	enqueuer := ingest.NewEnqueuer()
+	sum.Register[apicontracts.IngestEnqueuer](k, enqueuer)
 
 	vocabPipeline := vocabulary.New()
 	sum.Register[apicontracts.Vocabulary](k, vocabPipeline)
@@ -343,52 +286,40 @@ func run() error {
 	capitan.Emit(ctx, events.StartupApertureReady)
 
 	// =========================================================================
-	// 7. Notification Hooks + Herald Publisher
+	// 7. Herald: Ingestion Queue Publisher + Job Status Subscriber
 	// =========================================================================
 
-	// Hook domain signals → build normalized notifications.
-	capitan.Hook(events.IngestCompleted, func(ctx context.Context, e *capitan.Event) {
-		versionID, _ := events.IngestVersionIDKey.From(e)
-		documentID, _ := events.IngestDocumentIDKey.From(e)
-		tenantID, _ := events.IngestTenantIDKey.From(e)
-		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
-			TenantID:   tenantID,
-			DocumentID: documentID,
-			VersionID:  versionID,
-			Type:       models.NotificationIngestCompleted,
-			Message:    "Document ingestion completed",
-		}))
-	})
-
-	capitan.Hook(events.IngestFailed, func(ctx context.Context, e *capitan.Event) {
-		versionID, _ := events.IngestVersionIDKey.From(e)
-		documentID, _ := events.IngestDocumentIDKey.From(e)
-		tenantID, _ := events.IngestTenantIDKey.From(e)
-		ingestErr, _ := events.IngestErrorKey.From(e)
-		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
-			TenantID:   tenantID,
-			DocumentID: documentID,
-			VersionID:  versionID,
-			Type:       models.NotificationIngestFailed,
-			Message:    "Document ingestion failed",
-			Error:      ingestErr.Error(),
-		}))
-	})
-
-	// Single publisher for all notifications.
-	notifStream := heraldredis.New("argus:notifications", heraldredis.WithClient(redisClient))
-	notifPub := herald.NewPublisher(
-		notifStream,
-		events.NotificationSignal,
-		events.NotificationKey,
-		[]herald.Option[models.Notification]{
-			herald.WithRetry[models.Notification](3),
-			herald.WithBackoff[models.Notification](3, 500*time.Millisecond),
+	// Publisher: enqueuer emits IngestQueueSignal → herald publishes to argus:ingestion stream.
+	ingestStream := heraldredis.New("argus:ingestion", heraldredis.WithClient(redisClient))
+	ingestPub := herald.NewPublisher(
+		ingestStream,
+		events.IngestQueueSignal,
+		events.IngestQueueKey,
+		[]herald.Option[events.IngestMessage]{
+			herald.WithRetry[events.IngestMessage](3),
 		},
 	)
-	notifPub.Start()
-	defer func() { _ = notifPub.Close() }()
-	log.Println("notification hooks and publisher initialized")
+	ingestPub.Start()
+	defer func() { _ = ingestPub.Close() }()
+	log.Println("ingestion queue publisher initialized")
+
+	// Subscriber: job-status stream → JobStatusSignal for SSE handlers.
+	// Each app instance uses a unique consumer group for fanout.
+	hostname, _ := os.Hostname()
+	jobStatusStream := heraldredis.New("argus:job-status",
+		heraldredis.WithClient(redisClient),
+		heraldredis.WithGroup("argus-app-"+hostname),
+		heraldredis.WithConsumer(hostname),
+	)
+	jobStatusSub := herald.NewSubscriber(
+		jobStatusStream,
+		events.JobStatusSignal,
+		events.JobStatusKey,
+		[]herald.Option[events.JobStatusEvent]{},
+	)
+	jobStatusSub.Start(ctx)
+	defer func() { _ = jobStatusSub.Close() }()
+	log.Println("job status subscriber initialized")
 
 	// =========================================================================
 	// 8. Register Handlers and Start Server

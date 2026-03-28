@@ -53,7 +53,8 @@ func TestEmbedStage_HappyPath(t *testing.T) {
 	stage := newEmbedStage()
 
 	dc := &DocumentContext{
-		Version: &models.DocumentVersion{ID: "ver-1"},
+		Version: &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1"},
+		Job:     &models.Job{ID: "job-1"},
 		Content: "test content",
 	}
 
@@ -82,7 +83,8 @@ func TestEmbedStage_EmbedderError(t *testing.T) {
 	stage := newEmbedStage()
 
 	dc := &DocumentContext{
-		Version: &models.DocumentVersion{ID: "ver-1"},
+		Version: &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1"},
+		Job:     &models.Job{ID: "job-1"},
 		Content: "test content",
 	}
 
