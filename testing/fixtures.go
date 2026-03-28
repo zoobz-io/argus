@@ -62,6 +62,17 @@ func NewTopic() *models.Topic {
 	}
 }
 
+func NewUser() *models.User {
+	seen := FixtureTime2
+	return &models.User{
+		ID: "u1", ExternalID: "ext-u1", TenantID: "t1",
+		Email: "user@example.com", DisplayName: "Jane Doe",
+		Role: models.UserRoleViewer, Status: models.UserStatusActive,
+		LastSeenAt: &seen,
+		CreatedAt:  FixtureTime, UpdatedAt: FixtureTime2,
+	}
+}
+
 func NewTag() *models.Tag {
 	return &models.Tag{
 		ID: "tg1", TenantID: "t1",
