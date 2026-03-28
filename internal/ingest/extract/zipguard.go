@@ -36,31 +36,48 @@ func safeZIPReader(data []byte) (*zip.Reader, error) {
 }
 
 // safeOpen opens a zip entry with a decompressed size cap.
-// The returned reader will return io.EOF after MaxEntrySize bytes.
+// Returns an error if decompressed content exceeds MaxEntrySize.
+//
+// NOTE: f.UncompressedSize64 is attacker-controlled (set by the archive
+// creator). The pre-check catches honest archives early. The read-time
+// limit is the real security boundary.
 func safeOpen(f *zip.File) (io.ReadCloser, error) {
 	if f.UncompressedSize64 > uint64(MaxEntrySize) {
-		return nil, fmt.Errorf("entry %s exceeds maximum size (%d bytes)", f.Name, MaxEntrySize)
+		return nil, fmt.Errorf("entry %s declares size %d bytes (max %d)", f.Name, f.UncompressedSize64, MaxEntrySize)
 	}
 	rc, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
-	return &limitedReadCloser{
+	return &guardedReadCloser{
 		rc:    rc,
 		limit: io.LimitReader(rc, MaxEntrySize),
+		name:  f.Name,
 	}, nil
 }
 
-// limitedReadCloser wraps a ReadCloser with a size limit.
-type limitedReadCloser struct {
+// guardedReadCloser wraps a ReadCloser with a size limit that errors
+// on truncation instead of silently returning partial content.
+type guardedReadCloser struct {
 	rc    io.ReadCloser
 	limit io.Reader
+	name  string
+	total int64
 }
 
-func (l *limitedReadCloser) Read(p []byte) (int, error) {
-	return l.limit.Read(p)
+func (g *guardedReadCloser) Read(p []byte) (int, error) {
+	n, err := g.limit.Read(p)
+	g.total += int64(n)
+	if err == io.EOF && g.total >= MaxEntrySize {
+		// LimitReader returned EOF at the cap — probe for more data.
+		var probe [1]byte
+		if pn, _ := g.rc.Read(probe[:]); pn > 0 {
+			return n, fmt.Errorf("entry %s exceeds maximum decompressed size (%d bytes)", g.name, MaxEntrySize)
+		}
+	}
+	return n, err
 }
 
-func (l *limitedReadCloser) Close() error {
-	return l.rc.Close()
+func (g *guardedReadCloser) Close() error {
+	return g.rc.Close()
 }
