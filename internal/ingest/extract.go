@@ -115,6 +115,18 @@ func newExtractStage() pipz.Chainable[*DocumentContext] {
 		extract.RTF,
 	))
 
+	// Guard: reject unrecognized MIME types.
+	// pipz.Switch passes through unchanged on unmatched keys — catch that here.
+	guard := pipz.Apply(
+		pipz.NewIdentity("extract-guard", "Reject unsupported MIME types"),
+		func(_ context.Context, dc *DocumentContext) (*DocumentContext, error) {
+			if dc.Content == "" && len(dc.RawBytes) > 0 {
+				return dc, fmt.Errorf("unsupported MIME type: %s", dc.Document.MimeType)
+			}
+			return dc, nil
+		},
+	)
+
 	// Emit signal after extraction.
 	signal := pipz.Effect(
 		ExtractSignalID,
@@ -129,5 +141,5 @@ func newExtractStage() pipz.Chainable[*DocumentContext] {
 		},
 	)
 
-	return pipz.NewSequence(ExtractID, fetch, router, signal)
+	return pipz.NewSequence(ExtractID, fetch, router, guard, signal)
 }

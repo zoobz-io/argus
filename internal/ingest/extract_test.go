@@ -187,3 +187,28 @@ func TestExtractStage_CSVRouting(t *testing.T) {
 		t.Errorf("Content: got %q, want %q", result.Content, "a,b,c\n1,2,3")
 	}
 }
+
+func TestExtractStage_UnsupportedMIME(t *testing.T) {
+	versions := &mockIngestVersions{
+		OnGetVersionContent: func(_ context.Context, _ string) ([]byte, error) {
+			return []byte("some binary data"), nil
+		},
+	}
+
+	ctx := setupExtractRegistry(t, versions)
+	stage := newExtractStage()
+
+	dc := &DocumentContext{
+		Version:  &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1"},
+		Document: &models.Document{ObjectKey: "key", MimeType: "application/x-unknown-format"},
+		Job:      &models.Job{ID: "job-1"},
+	}
+
+	_, err := stage.Process(ctx, dc)
+	if err == nil {
+		t.Fatal("expected error for unsupported MIME type, got nil")
+	}
+	if !strings.Contains(err.Error(), "unsupported MIME type") {
+		t.Errorf("error should mention unsupported MIME type, got %q", err.Error())
+	}
+}
