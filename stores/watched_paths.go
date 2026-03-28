@@ -74,20 +74,25 @@ func (s *WatchedPaths) ListWatchedPaths(ctx context.Context, page models.OffsetP
 	if err != nil {
 		return nil, err
 	}
-	return &models.OffsetResult[models.WatchedPath]{Items: items, Offset: page.Offset}, nil
+	total, _ := s.Count().Exec(ctx, nil)
+	return &models.OffsetResult[models.WatchedPath]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
 // ListWatchedPathsByTenant retrieves watched paths for a specific tenant using offset/limit pagination.
 func (s *WatchedPaths) ListWatchedPathsByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.WatchedPath], error) {
+	params := map[string]any{"tenant_id": tenantID}
 	items, err := s.Query().
 		Where("tenant_id", "=", "tenant_id").
 		OrderBy("created_at", "ASC").
 		OrderBy("id", "ASC").
 		Limit(page.PageSize()).
 		Offset(page.Offset).
-		Exec(ctx, map[string]any{"tenant_id": tenantID})
+		Exec(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	return &models.OffsetResult[models.WatchedPath]{Items: items, Offset: page.Offset}, nil
+	total, _ := s.Count().
+		Where("tenant_id", "=", "tenant_id").
+		Exec(ctx, params)
+	return &models.OffsetResult[models.WatchedPath]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }

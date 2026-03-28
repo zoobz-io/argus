@@ -73,5 +73,6 @@ func (s *Tenants) ListTenants(ctx context.Context, page models.OffsetPage) (*mod
 	if err != nil {
 		return nil, err
 	}
-	return &models.OffsetResult[models.Tenant]{Items: items, Offset: page.Offset}, nil
+	total, _ := s.Count().Exec(ctx, nil)
+	return &models.OffsetResult[models.Tenant]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
