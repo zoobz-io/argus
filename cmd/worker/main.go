@@ -9,37 +9,22 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/jmoiron/sqlx"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/opensearch-project/opensearch-go/v4"
-	goredis "github.com/redis/go-redis/v9"
 	astqlpg "github.com/zoobz-io/astql/postgres"
 	"github.com/zoobz-io/capitan"
-	grubminio "github.com/zoobz-io/grub/minio"
-	grubopensearch "github.com/zoobz-io/grub/opensearch"
 	"github.com/zoobz-io/herald"
 	heraldredis "github.com/zoobz-io/herald/redis"
-	osrenderer "github.com/zoobz-io/lucene/opensearch"
 	"github.com/zoobz-io/sum"
-	"github.com/zoobz-io/vex"
-	vexopenai "github.com/zoobz-io/vex/openai"
-	"github.com/zoobz-io/zyn"
-	zynopenai "github.com/zoobz-io/zyn/openai"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
+	"github.com/zoobz-io/argus/internal/boot"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/ingest"
 	"github.com/zoobz-io/argus/models"
-	"github.com/zoobz-io/argus/proto"
 	"github.com/zoobz-io/argus/stores"
 
 	_ "github.com/zoobz-io/grub/postgres"
@@ -99,115 +84,55 @@ func run() error {
 	// 2. Connect to Infrastructure
 	// =========================================================================
 
-	// Database
-	dbCfg := sum.MustUse[config.Database](ctx)
-	db, err := sqlx.Connect("postgres", dbCfg.DSN())
+	db, err := boot.Database(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return err
 	}
 	defer func() { _ = db.Close() }()
-	log.Println("database connected")
 
-	// Storage (MinIO)
-	storageCfg := sum.MustUse[config.Storage](ctx)
-	minioClient, err := minio.New(storageCfg.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(storageCfg.AccessKey, storageCfg.SecretKey, ""),
-		Secure: storageCfg.UseSSL,
-	})
+	bucketProvider, err := boot.Storage(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to storage: %w", err)
+		return err
 	}
-	bucketProvider := grubminio.New(minioClient, storageCfg.Bucket)
-	log.Println("storage connected")
 
-	// Redis
-	redisCfg := sum.MustUse[config.Redis](ctx)
-	redisClient := goredis.NewClient(&goredis.Options{
-		Addr: redisCfg.Addr,
-	})
+	redisClient, err := boot.Redis(ctx)
+	if err != nil {
+		return err
+	}
 	defer func() { _ = redisClient.Close() }()
-	if pingErr := redisClient.Ping(ctx).Err(); pingErr != nil {
-		return fmt.Errorf("failed to connect to redis: %w", pingErr)
-	}
-	log.Println("redis connected")
 
-	// OpenSearch
-	osCfg := sum.MustUse[config.OpenSearch](ctx)
-	osClient, err := opensearch.NewClient(opensearch.Config{
-		Addresses: []string{osCfg.Addr},
-		Username:  osCfg.Username,
-		Password:  osCfg.Password,
-	})
+	searchProvider, err := boot.OpenSearch(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create opensearch client: %w", err)
+		return err
 	}
-	searchProvider := grubopensearch.New(osClient, grubopensearch.Config{
-		Version: osrenderer.V2,
-	})
-	log.Println("opensearch connected")
 
-	// OCR (gRPC)
-	ocrCfg := sum.MustUse[config.OCR](ctx)
-	ocrConn, err := grpc.NewClient(ocrCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	ocrConn, ocrClient, err := boot.OCR(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to ocr service: %w", err)
+		return err
 	}
 	defer func() { _ = ocrConn.Close() }()
-	ocrClient := proto.NewOCRServiceClient(ocrConn)
-	log.Println("ocr service connected")
 
-	// Convert (gRPC)
-	convertCfg := sum.MustUse[config.Convert](ctx)
-	convertConn, err := grpc.NewClient(convertCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	convertConn, convertClient, err := boot.Convert(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to convert service: %w", err)
+		return err
 	}
 	defer func() { _ = convertConn.Close() }()
-	convertClient := proto.NewConvertServiceClient(convertConn)
-	log.Println("convert service connected")
 
-	// Classify (gRPC)
-	classifyCfg := sum.MustUse[config.Classify](ctx)
-	classifyConn, err := grpc.NewClient(classifyCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	classifyConn, classifyClient, err := boot.Classify(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to classify service: %w", err)
+		return err
 	}
 	defer func() { _ = classifyConn.Close() }()
-	classifyClient := proto.NewClassifyServiceClient(classifyConn)
-	log.Println("classify service connected")
 
-	// LLM (zyn)
-	llmCfg := sum.MustUse[config.LLM](ctx)
-	llmProvider := zynopenai.New(zynopenai.Config{
-		APIKey:  llmCfg.APIKey,
-		Model:   llmCfg.Model,
-		BaseURL: llmCfg.BaseURL,
-	})
-	analyzerSynapse, err := zyn.Extract[models.DocumentAnalysis](
-		"Analyze the document content and extract: a concise summary paragraph, the ISO 639-1 language code, and any matching topics and tags from the provided vocabulary lists. Only select topics and tags that clearly apply to the content.",
-		llmProvider,
-		zyn.WithRetry(3),
-		zyn.WithTimeout(60*time.Second),
-	)
+	analyzer, err := boot.LLM(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create analyzer synapse: %w", err)
+		return err
 	}
-	analyzer := ingest.NewSynapseAnalyzer(analyzerSynapse)
-	log.Println("llm provider initialized")
 
-	// Embeddings (vex)
-	embeddingCfg := sum.MustUse[config.Embedding](ctx)
-	embeddingProvider := vexopenai.New(vexopenai.Config{
-		APIKey:     embeddingCfg.APIKey,
-		Model:      embeddingCfg.Model,
-		BaseURL:    embeddingCfg.BaseURL,
-		Dimensions: embeddingCfg.Dimensions,
-	})
-	embedService := vex.NewService(embeddingProvider,
-		vex.WithRetry(3),
-		vex.WithTimeout(30*time.Second),
-	)
-	log.Println("embedding provider initialized")
+	embedService, err := boot.Embedding(ctx)
+	if err != nil {
+		return err
+	}
 
 	// =========================================================================
 	// 3. Create and Register Internal Contracts
@@ -236,7 +161,24 @@ func run() error {
 	sum.Freeze(k)
 
 	// =========================================================================
-	// 5. Signal Bridge: pipeline signals → JobStatusSignal
+	// 5. Initialize Observability (OTEL + Aperture)
+	// =========================================================================
+
+	otelProviders, err := boot.OTEL(ctx, "argus-worker")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = otelProviders.Shutdown(ctx) }()
+
+	ap, err := boot.Aperture(ctx, otelProviders)
+	if err != nil {
+		return err
+	}
+	defer ap.Close()
+	_ = ap
+
+	// =========================================================================
+	// 6. Signal Bridge: pipeline signals → JobStatusSignal
 	// =========================================================================
 
 	bridge := func(stage string) func(context.Context, *capitan.Event) {
@@ -269,7 +211,7 @@ func run() error {
 	capitan.Hook(events.IngestFailed, bridge("failed"))
 
 	// =========================================================================
-	// 6. Herald Publisher: JobStatusSignal → argus:job-status stream
+	// 7. Herald Publisher: JobStatusSignal → argus:job-status stream
 	// =========================================================================
 
 	jobStatusStream := heraldredis.New("argus:job-status", heraldredis.WithClient(redisClient))
@@ -287,7 +229,7 @@ func run() error {
 	log.Println("job status publisher initialized")
 
 	// =========================================================================
-	// 7. Notification Hooks + Herald Publisher
+	// 8. Notification Hooks + Herald Publisher
 	// =========================================================================
 
 	capitan.Hook(events.IngestCompleted, func(ctx context.Context, e *capitan.Event) {
@@ -337,11 +279,11 @@ func run() error {
 	log.Println("notification hooks and publisher initialized")
 
 	// =========================================================================
-	// 8. Herald Subscriber: argus:ingestion → run pipeline
+	// 9. Herald Subscriber: argus:ingestion → run pipeline
 	// =========================================================================
 
 	workerCfg := sum.MustUse[config.Worker](ctx)
-	hostname, _ := os.Hostname()
+	hostname := boot.Hostname()
 
 	ingestStream := heraldredis.New("argus:ingestion",
 		heraldredis.WithClient(redisClient),
@@ -372,7 +314,7 @@ func run() error {
 	})
 
 	// =========================================================================
-	// 9. Block Until Shutdown
+	// 10. Block Until Shutdown
 	// =========================================================================
 
 	log.Println("worker ready")

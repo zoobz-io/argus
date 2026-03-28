@@ -6,29 +6,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"os"
-	"time"
 
-	"github.com/jmoiron/sqlx"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/opensearch-project/opensearch-go/v4"
-	goredis "github.com/redis/go-redis/v9"
-	"github.com/zoobz-io/aperture"
+	"github.com/zoobz-io/capitan"
+	"github.com/zoobz-io/cereal"
 	"github.com/zoobz-io/herald"
 	heraldredis "github.com/zoobz-io/herald/redis"
 	astqlpg "github.com/zoobz-io/astql/postgres"
-	"github.com/zoobz-io/capitan"
-	"github.com/zoobz-io/cereal"
-	grubminio "github.com/zoobz-io/grub/minio"
-	grubopensearch "github.com/zoobz-io/grub/opensearch"
 	grubredis "github.com/zoobz-io/grub/redis"
-	osrenderer "github.com/zoobz-io/lucene/opensearch"
 	"github.com/zoobz-io/sum"
-	"github.com/zoobz-io/vex"
-	vexopenai "github.com/zoobz-io/vex/openai"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	admincontracts "github.com/zoobz-io/argus/admin/contracts"
 	adminhandlers "github.com/zoobz-io/argus/admin/handlers"
@@ -37,12 +22,11 @@ import (
 	"github.com/zoobz-io/argus/api/wire"
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
+	"github.com/zoobz-io/argus/internal/boot"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/ingest"
-	intotel "github.com/zoobz-io/argus/internal/otel"
 	"github.com/zoobz-io/argus/internal/vocabulary"
 	"github.com/zoobz-io/argus/models"
-	"github.com/zoobz-io/argus/proto"
 	"github.com/zoobz-io/argus/stores"
 
 	_ "github.com/zoobz-io/grub/postgres"
@@ -105,89 +89,50 @@ func run() error {
 	// 2. Connect to Infrastructure
 	// =========================================================================
 
-	// Database
-	dbCfg := sum.MustUse[config.Database](ctx)
-	db, err := sqlx.Connect("postgres", dbCfg.DSN())
+	db, err := boot.Database(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return err
 	}
 	defer func() { _ = db.Close() }()
-	log.Println("database connected")
 	capitan.Emit(ctx, events.StartupDatabaseConnected)
 
-	// Storage (MinIO)
-	storageCfg := sum.MustUse[config.Storage](ctx)
-	minioClient, err := minio.New(storageCfg.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(storageCfg.AccessKey, storageCfg.SecretKey, ""),
-		Secure: storageCfg.UseSSL,
-	})
+	bucketProvider, err := boot.Storage(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to storage: %w", err)
+		return err
 	}
-	bucketProvider := grubminio.New(minioClient, storageCfg.Bucket)
-	log.Println("storage connected")
 	capitan.Emit(ctx, events.StartupStorageConnected)
 
-	// Redis
-	redisCfg := sum.MustUse[config.Redis](ctx)
-	redisClient := goredis.NewClient(&goredis.Options{
-		Addr: redisCfg.Addr,
-	})
-	defer func() { _ = redisClient.Close() }()
-	if pingErr := redisClient.Ping(ctx).Err(); pingErr != nil {
-		return fmt.Errorf("failed to connect to redis: %w", pingErr)
+	redisClient, err := boot.Redis(ctx)
+	if err != nil {
+		return err
 	}
+	defer func() { _ = redisClient.Close() }()
 	redisProvider := grubredis.New(redisClient)
 	_ = redisProvider // Available for cache stores.
-	log.Println("redis connected")
 	capitan.Emit(ctx, events.StartupRedisConnected)
 
-	// OpenSearch
-	osCfg := sum.MustUse[config.OpenSearch](ctx)
-	osClient, err := opensearch.NewClient(opensearch.Config{
-		Addresses: []string{osCfg.Addr},
-		Username:  osCfg.Username,
-		Password:  osCfg.Password,
-	})
+	searchProvider, err := boot.OpenSearch(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create opensearch client: %w", err)
+		return err
 	}
-	searchProvider := grubopensearch.New(osClient, grubopensearch.Config{
-		Version: osrenderer.V2,
-	})
-	log.Println("opensearch connected")
 	capitan.Emit(ctx, events.StartupOpenSearchConnected)
 
-	// Classify (gRPC) — needed for vocabulary injection classification.
-	classifyCfg := sum.MustUse[config.Classify](ctx)
-	classifyConn, err := grpc.NewClient(classifyCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	classifyConn, classifyClient, err := boot.Classify(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to classify service: %w", err)
+		return err
 	}
 	defer func() { _ = classifyConn.Close() }()
-	classifyClient := proto.NewClassifyServiceClient(classifyConn)
-	log.Println("classify service connected")
 
-	// Embeddings (vex) — needed for search query embedding.
-	embeddingCfg := sum.MustUse[config.Embedding](ctx)
-	embeddingProvider := vexopenai.New(vexopenai.Config{
-		APIKey:     embeddingCfg.APIKey,
-		Model:      embeddingCfg.Model,
-		BaseURL:    embeddingCfg.BaseURL,
-		Dimensions: embeddingCfg.Dimensions,
-	})
-	embedService := vex.NewService(embeddingProvider,
-		vex.WithRetry(3),
-		vex.WithTimeout(30*time.Second),
-	)
-	log.Println("embedding provider initialized")
+	embedService, err := boot.Embedding(ctx)
+	if err != nil {
+		return err
+	}
 
 	// =========================================================================
 	// 3. Create and Register Stores
 	// =========================================================================
 
 	renderer := astqlpg.New()
-
 	allStores := stores.New(db, renderer, bucketProvider, searchProvider)
 
 	// Public API contracts
@@ -231,14 +176,11 @@ func run() error {
 	// 4. Register Boundaries
 	// =========================================================================
 
-	// Model boundaries
 	sum.NewBoundary[models.Tenant](k)
 	sum.NewBoundary[models.Provider](k)
 	sum.NewBoundary[models.WatchedPath](k)
 	sum.NewBoundary[models.Document](k)
 	sum.NewBoundary[models.DocumentVersion](k)
-
-	// Wire boundaries
 	wire.RegisterBoundaries(k)
 
 	// =========================================================================
@@ -252,35 +194,16 @@ func run() error {
 	// 6. Initialize Observability (OTEL + Aperture)
 	// =========================================================================
 
-	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if otelEndpoint == "" {
-		otelEndpoint = "localhost:4318"
-	}
-	serviceName := os.Getenv("OTEL_SERVICE_NAME")
-	if serviceName == "" {
-		serviceName = "argus"
-	}
-
-	otelProviders, err := intotel.New(ctx, intotel.Config{
-		Endpoint:    otelEndpoint,
-		ServiceName: serviceName,
-	})
+	otelProviders, err := boot.OTEL(ctx, "argus")
 	if err != nil {
-		return fmt.Errorf("failed to create otel providers: %w", err)
+		return err
 	}
 	defer func() { _ = otelProviders.Shutdown(ctx) }()
-	log.Println("observability initialized")
 	capitan.Emit(ctx, events.StartupOTELReady)
 
-	// Initialize aperture to bridge capitan events → OTEL.
-	ap, err := aperture.New(
-		capitan.Default(),
-		otelProviders.Log,
-		otelProviders.Metric,
-		otelProviders.Trace,
-	)
+	ap, err := boot.Aperture(ctx, otelProviders)
 	if err != nil {
-		return fmt.Errorf("failed to create aperture: %w", err)
+		return err
 	}
 	defer ap.Close()
 	capitan.Emit(ctx, events.StartupApertureReady)
@@ -289,7 +212,6 @@ func run() error {
 	// 7. Herald: Ingestion Queue Publisher + Job Status Subscriber
 	// =========================================================================
 
-	// Publisher: enqueuer emits IngestQueueSignal → herald publishes to argus:ingestion stream.
 	ingestStream := heraldredis.New("argus:ingestion", heraldredis.WithClient(redisClient))
 	ingestPub := herald.NewPublisher(
 		ingestStream,
@@ -303,9 +225,7 @@ func run() error {
 	defer func() { _ = ingestPub.Close() }()
 	log.Println("ingestion queue publisher initialized")
 
-	// Subscriber: job-status stream → JobStatusSignal for SSE handlers.
-	// Each app instance uses a unique consumer group for fanout.
-	hostname, _ := os.Hostname()
+	hostname := boot.Hostname()
 	jobStatusStream := heraldredis.New("argus:job-status",
 		heraldredis.WithClient(redisClient),
 		heraldredis.WithGroup("argus-app-"+hostname),

@@ -8,23 +8,19 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/opensearch-project/opensearch-go/v4"
-	goredis "github.com/redis/go-redis/v9"
 	"github.com/zoobz-io/capitan"
-	grubopensearch "github.com/zoobz-io/grub/opensearch"
 	"github.com/zoobz-io/herald"
 	heraldredis "github.com/zoobz-io/herald/redis"
-	osrenderer "github.com/zoobz-io/lucene/opensearch"
 	"github.com/zoobz-io/sum"
 
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
+	"github.com/zoobz-io/argus/internal/boot"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/stores"
 )
@@ -62,31 +58,16 @@ func run() error {
 	// 2. Connect to Infrastructure
 	// =========================================================================
 
-	// Redis
-	redisCfg := sum.MustUse[config.Redis](ctx)
-	redisClient := goredis.NewClient(&goredis.Options{
-		Addr: redisCfg.Addr,
-	})
-	defer func() { _ = redisClient.Close() }()
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("failed to connect to redis: %w", err)
-	}
-	log.Println("redis connected")
-
-	// OpenSearch
-	osCfg := sum.MustUse[config.OpenSearch](ctx)
-	osClient, err := opensearch.NewClient(opensearch.Config{
-		Addresses: []string{osCfg.Addr},
-		Username:  osCfg.Username,
-		Password:  osCfg.Password,
-	})
+	redisClient, err := boot.Redis(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create opensearch client: %w", err)
+		return err
 	}
-	searchProvider := grubopensearch.New(osClient, grubopensearch.Config{
-		Version: osrenderer.V2,
-	})
-	log.Println("opensearch connected")
+	defer func() { _ = redisClient.Close() }()
+
+	searchProvider, err := boot.OpenSearch(ctx)
+	if err != nil {
+		return err
+	}
 
 	// =========================================================================
 	// 3. Create Notification Store
@@ -105,7 +86,7 @@ func run() error {
 	// =========================================================================
 
 	notifCfg := sum.MustUse[config.Notifier](ctx)
-	hostname, _ := os.Hostname()
+	hostname := boot.Hostname()
 
 	notifStream := heraldredis.New("argus:notifications",
 		heraldredis.WithClient(redisClient),
