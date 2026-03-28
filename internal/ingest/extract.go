@@ -117,10 +117,12 @@ func newExtractStage() pipz.Chainable[*DocumentContext] {
 
 	// Guard: reject unrecognized MIME types.
 	// pipz.Switch passes through unchanged on unmatched keys — catch that here.
+	// Uses HasRoute rather than checking Content to avoid false positives on
+	// extractors that legitimately return empty content (blank scanned pages, etc.).
 	guard := pipz.Apply(
 		pipz.NewIdentity("extract-guard", "Reject unsupported MIME types"),
 		func(_ context.Context, dc *DocumentContext) (*DocumentContext, error) {
-			if dc.Content == "" && len(dc.RawBytes) > 0 {
+			if !router.HasRoute(dc.Document.MimeType) {
 				return dc, fmt.Errorf("unsupported MIME type: %s", dc.Document.MimeType)
 			}
 			return dc, nil
