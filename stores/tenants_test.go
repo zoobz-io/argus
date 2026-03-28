@@ -181,6 +181,7 @@ func TestTenants_ListTenants(t *testing.T) {
 		{ID: "t-1", Name: "Acme", Slug: "acme", CreatedAt: ts, UpdatedAt: ts},
 		{ID: "t-2", Name: "Beta", Slug: "beta", CreatedAt: ts.Add(time.Hour), UpdatedAt: ts.Add(time.Hour)},
 	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 5}})
 
 	result, err := store.ListTenants(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
 	if err != nil {

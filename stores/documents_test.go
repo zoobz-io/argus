@@ -16,6 +16,10 @@ import (
 	soytesting "github.com/zoobz-io/soy/testing"
 )
 
+type countRow struct {
+	Count float64 `db:"count"`
+}
+
 func newTestDocuments(t *testing.T, mock *soytesting.MockDB) *Documents {
 	t.Helper()
 	sum.Reset()
@@ -81,6 +85,7 @@ func TestDocuments_ListDocuments(t *testing.T) {
 		{ID: "doc-1", Name: "report.pdf", MimeType: "application/pdf", ExternalID: "ext-1", ObjectKey: "obj-1", TenantID: "t-1", ProviderID: "p-1", WatchedPathID: "wp-1", CreatedAt: ts, UpdatedAt: ts},
 		{ID: "doc-2", Name: "spec.docx", MimeType: "application/docx", ExternalID: "ext-2", ObjectKey: "obj-2", TenantID: "t-1", ProviderID: "p-1", WatchedPathID: "wp-1", CreatedAt: ts.Add(time.Hour), UpdatedAt: ts.Add(time.Hour)},
 	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 5}})
 
 	result, err := store.ListDocuments(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
 	if err != nil {
@@ -113,6 +118,7 @@ func TestDocuments_ListDocumentsByTenant(t *testing.T) {
 	mock.ExpectQuery().WithRows([]models.Document{
 		{ID: "doc-1", Name: "report.pdf", MimeType: "application/pdf", ExternalID: "ext-1", ObjectKey: "obj-1", TenantID: "t-1", ProviderID: "p-1", WatchedPathID: "wp-1", CreatedAt: ts, UpdatedAt: ts},
 	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 5}})
 
 	result, err := store.ListDocumentsByTenant(context.Background(), "t-1", models.OffsetPage{Offset: 0, Limit: 10})
 	if err != nil {

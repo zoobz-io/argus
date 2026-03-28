@@ -48,7 +48,10 @@ func (s *DocumentVersions) ListDocumentVersions(ctx context.Context, page models
 	if err != nil {
 		return nil, err
 	}
-	total, _ := s.Count().Exec(ctx, nil)
+	total, countErr := s.Count().Exec(ctx, nil)
+	if countErr != nil {
+		return nil, countErr
+	}
 	return &models.OffsetResult[models.DocumentVersion]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
@@ -74,8 +77,11 @@ func (s *DocumentVersions) ListVersionsByDocument(ctx context.Context, documentI
 	if err != nil {
 		return nil, err
 	}
-	total, _ := s.Count().
+	total, countErr := s.Count().
 		Where("document_id", "=", "document_id").
 		Exec(ctx, params)
+	if countErr != nil {
+		return nil, countErr
+	}
 	return &models.OffsetResult[models.DocumentVersion]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }

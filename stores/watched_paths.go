@@ -74,7 +74,10 @@ func (s *WatchedPaths) ListWatchedPaths(ctx context.Context, page models.OffsetP
 	if err != nil {
 		return nil, err
 	}
-	total, _ := s.Count().Exec(ctx, nil)
+	total, countErr := s.Count().Exec(ctx, nil)
+	if countErr != nil {
+		return nil, countErr
+	}
 	return &models.OffsetResult[models.WatchedPath]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
@@ -91,8 +94,11 @@ func (s *WatchedPaths) ListWatchedPathsByTenant(ctx context.Context, tenantID st
 	if err != nil {
 		return nil, err
 	}
-	total, _ := s.Count().
+	total, countErr := s.Count().
 		Where("tenant_id", "=", "tenant_id").
 		Exec(ctx, params)
+	if countErr != nil {
+		return nil, countErr
+	}
 	return &models.OffsetResult[models.WatchedPath]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }

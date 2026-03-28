@@ -205,6 +205,7 @@ func TestProviders_ListProviders(t *testing.T) {
 		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "Drive A", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
 		{ID: "p-2", TenantID: "t-1", Type: models.ProviderOneDrive, Name: "Drive B", Credentials: creds, Active: true, CreatedAt: ts.Add(time.Hour), UpdatedAt: ts.Add(time.Hour)},
 	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 5}})
 
 	result, err := store.ListProviders(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
 	if err != nil {
@@ -225,6 +226,7 @@ func TestProviders_ListProvidersByTenant(t *testing.T) {
 	mock.ExpectQuery().WithRows([]models.Provider{
 		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "Drive A", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
 	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 5}})
 
 	result, err := store.ListProvidersByTenant(context.Background(), "t-1", models.OffsetPage{Offset: 0, Limit: 10})
 	if err != nil {

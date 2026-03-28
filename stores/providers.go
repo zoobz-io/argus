@@ -77,7 +77,10 @@ func (s *Providers) ListProviders(ctx context.Context, page models.OffsetPage) (
 	if err != nil {
 		return nil, err
 	}
-	total, _ := s.Count().Exec(ctx, nil)
+	total, countErr := s.Count().Exec(ctx, nil)
+	if countErr != nil {
+		return nil, countErr
+	}
 	return &models.OffsetResult[models.Provider]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
@@ -94,8 +97,11 @@ func (s *Providers) ListProvidersByTenant(ctx context.Context, tenantID string, 
 	if err != nil {
 		return nil, err
 	}
-	total, _ := s.Count().
+	total, countErr := s.Count().
 		Where("tenant_id", "=", "tenant_id").
 		Exec(ctx, params)
+	if countErr != nil {
+		return nil, countErr
+	}
 	return &models.OffsetResult[models.Provider]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
