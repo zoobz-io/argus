@@ -48,7 +48,11 @@ func (s *DocumentVersions) ListDocumentVersions(ctx context.Context, page models
 	if err != nil {
 		return nil, err
 	}
-	return &models.OffsetResult[models.DocumentVersion]{Items: items, Offset: page.Offset}, nil
+	total, countErr := s.Count().Exec(ctx, nil)
+	if countErr != nil {
+		return nil, countErr
+	}
+	return &models.OffsetResult[models.DocumentVersion]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
 // GetVersionContent retrieves the raw bytes for a document version from object storage.
@@ -62,15 +66,22 @@ func (s *DocumentVersions) GetVersionContent(ctx context.Context, objectKey stri
 
 // ListVersionsByDocument retrieves versions for a specific document using offset/limit pagination.
 func (s *DocumentVersions) ListVersionsByDocument(ctx context.Context, documentID string, page models.OffsetPage) (*models.OffsetResult[models.DocumentVersion], error) {
+	params := map[string]any{"document_id": documentID}
 	items, err := s.Query().
 		Where("document_id", "=", "document_id").
 		OrderBy("created_at", "ASC").
 		OrderBy("id", "ASC").
 		Limit(page.PageSize()).
 		Offset(page.Offset).
-		Exec(ctx, map[string]any{"document_id": documentID})
+		Exec(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	return &models.OffsetResult[models.DocumentVersion]{Items: items, Offset: page.Offset}, nil
+	total, countErr := s.Count().
+		Where("document_id", "=", "document_id").
+		Exec(ctx, params)
+	if countErr != nil {
+		return nil, countErr
+	}
+	return &models.OffsetResult[models.DocumentVersion]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }

@@ -103,6 +103,7 @@ func TestDocumentVersions_ListDocumentVersions(t *testing.T) {
 		{ID: "ver-1", DocumentID: "doc-1", TenantID: "t-1", ContentHash: "abc123", VersionNumber: 1, CreatedAt: ts},
 		{ID: "ver-2", DocumentID: "doc-1", TenantID: "t-1", ContentHash: "def456", VersionNumber: 2, CreatedAt: ts.Add(time.Hour)},
 	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 5}})
 
 	result, err := store.ListDocumentVersions(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
 	if err != nil {
@@ -122,6 +123,7 @@ func TestDocumentVersions_ListVersionsByDocument(t *testing.T) {
 	mock.ExpectQuery().WithRows([]models.DocumentVersion{
 		{ID: "ver-1", DocumentID: "doc-1", TenantID: "t-1", ContentHash: "abc123", VersionNumber: 1, CreatedAt: ts},
 	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 5}})
 
 	result, err := store.ListVersionsByDocument(context.Background(), "doc-1", models.OffsetPage{Offset: 0, Limit: 10})
 	if err != nil {
@@ -169,6 +171,23 @@ func TestDocumentVersions_GetVersionContent_Error(t *testing.T) {
 	}
 }
 
+func TestDocumentVersions_ListDocumentVersions_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocumentVersions(t, mock, nil)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.DocumentVersion{
+		{ID: "ver-1", DocumentID: "doc-1", TenantID: "t-1", ContentHash: "abc123", VersionNumber: 1, CreatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListDocumentVersions(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
+	}
+	mock.AssertExpectations()
+}
+
 func TestDocumentVersions_ListDocumentVersions_Error(t *testing.T) {
 	mock := soytesting.NewMockDB(t)
 	store := newTestDocumentVersions(t, mock, nil)
@@ -178,6 +197,23 @@ func TestDocumentVersions_ListDocumentVersions_Error(t *testing.T) {
 	_, err := store.ListDocumentVersions(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestDocumentVersions_ListVersionsByDocument_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocumentVersions(t, mock, nil)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.DocumentVersion{
+		{ID: "ver-1", DocumentID: "doc-1", TenantID: "t-1", ContentHash: "abc123", VersionNumber: 1, CreatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListVersionsByDocument(context.Background(), "doc-1", models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
 	}
 	mock.AssertExpectations()
 }

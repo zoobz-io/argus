@@ -44,20 +44,31 @@ func (s *Documents) ListDocuments(ctx context.Context, page models.OffsetPage) (
 	if err != nil {
 		return nil, err
 	}
-	return &models.OffsetResult[models.Document]{Items: items, Offset: page.Offset}, nil
+	total, countErr := s.Count().Exec(ctx, nil)
+	if countErr != nil {
+		return nil, countErr
+	}
+	return &models.OffsetResult[models.Document]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
 // ListDocumentsByTenant retrieves documents for a specific tenant using offset/limit pagination.
 func (s *Documents) ListDocumentsByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Document], error) {
+	params := map[string]any{"tenant_id": tenantID}
 	items, err := s.Query().
 		Where("tenant_id", "=", "tenant_id").
 		OrderBy("created_at", "ASC").
 		OrderBy("id", "ASC").
 		Limit(page.PageSize()).
 		Offset(page.Offset).
-		Exec(ctx, map[string]any{"tenant_id": tenantID})
+		Exec(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	return &models.OffsetResult[models.Document]{Items: items, Offset: page.Offset}, nil
+	total, countErr := s.Count().
+		Where("tenant_id", "=", "tenant_id").
+		Exec(ctx, params)
+	if countErr != nil {
+		return nil, countErr
+	}
+	return &models.OffsetResult[models.Document]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
