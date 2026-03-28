@@ -122,6 +122,7 @@ func newExtractStage() pipz.Chainable[*DocumentContext] {
 			capitan.Info(ctx, events.IngestExtracted,
 				events.IngestVersionIDKey.Field(dc.Version.ID),
 				events.IngestDocumentIDKey.Field(dc.Version.DocumentID),
+				events.IngestJobIDKey.Field(dc.Job.ID),
 				events.IngestMimeTypeKey.Field(dc.Document.MimeType),
 			)
 			return nil

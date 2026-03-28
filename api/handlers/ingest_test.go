@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/zoobz-io/argus/api/wire"
+	"github.com/zoobz-io/argus/models"
 	argustest "github.com/zoobz-io/argus/testing"
 	rtesting "github.com/zoobz-io/rocco/testing"
 )
@@ -20,7 +21,7 @@ func TestIngestRequest_Clone(t *testing.T) {
 }
 
 func TestIngestResponse_Clone(t *testing.T) {
-	orig := IngestResponse{Message: "done"}
+	orig := IngestResponse{JobID: "j1", Status: "pending"}
 	if orig.Clone() != orig {
 		t.Error("clone mismatch")
 	}
@@ -28,13 +29,13 @@ func TestIngestResponse_Clone(t *testing.T) {
 
 func TestTriggerIngest_Success(t *testing.T) {
 	var capturedVersionID string
-	mock := &argustest.MockIngest{
-		OnIngest: func(_ context.Context, versionID string) error {
+	mock := &argustest.MockIngestEnqueuer{
+		OnEnqueue: func(_ context.Context, versionID string) (*models.Job, error) {
 			capturedVersionID = versionID
-			return nil
+			return &models.Job{ID: "job-1", Status: models.JobPending}, nil
 		},
 	}
-	engine := argustest.SetupAPIEngine(t, All(), argustest.WithAPIIngest(mock), argustest.WithBoundaries(wire.RegisterBoundaries))
+	engine := argustest.SetupAPIEngine(t, All(), argustest.WithAPIIngestEnqueuer(mock), argustest.WithBoundaries(wire.RegisterBoundaries))
 
 	body := IngestRequest{VersionID: "v1"}
 	capture := rtesting.ServeRequest(engine, "POST", "/ingest", body)
@@ -43,15 +44,26 @@ func TestTriggerIngest_Success(t *testing.T) {
 	if capturedVersionID != "v1" {
 		t.Errorf("expected v1, got %q", capturedVersionID)
 	}
+
+	var resp IngestResponse
+	if err := capture.DecodeJSON(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.JobID != "job-1" {
+		t.Errorf("expected job-1, got %q", resp.JobID)
+	}
+	if resp.Status != "pending" {
+		t.Errorf("expected pending, got %q", resp.Status)
+	}
 }
 
 func TestTriggerIngest_Error(t *testing.T) {
-	mock := &argustest.MockIngest{
-		OnIngest: func(_ context.Context, _ string) error {
-			return fmt.Errorf("pipeline failed")
+	mock := &argustest.MockIngestEnqueuer{
+		OnEnqueue: func(_ context.Context, _ string) (*models.Job, error) {
+			return nil, fmt.Errorf("pipeline failed")
 		},
 	}
-	engine := argustest.SetupAPIEngine(t, All(), argustest.WithAPIIngest(mock), argustest.WithBoundaries(wire.RegisterBoundaries))
+	engine := argustest.SetupAPIEngine(t, All(), argustest.WithAPIIngestEnqueuer(mock), argustest.WithBoundaries(wire.RegisterBoundaries))
 
 	body := IngestRequest{VersionID: "v1"}
 	capture := rtesting.ServeRequest(engine, "POST", "/ingest", body)

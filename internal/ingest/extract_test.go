@@ -95,6 +95,7 @@ func TestExtractStage_FetchAndPlaintext(t *testing.T) {
 			ObjectKey: "objects/doc-1/ver-1",
 			MimeType:  extract.MimePlain,
 		},
+		Job: &models.Job{ID: "job-1"},
 	}
 
 	result, err := stage.Process(ctx, dc)
@@ -125,6 +126,7 @@ func TestExtractStage_FetchError(t *testing.T) {
 	dc := &DocumentContext{
 		Version:  &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1"},
 		Document: &models.Document{ObjectKey: "objects/doc-1/ver-1", MimeType: extract.MimePlain},
+		Job:      &models.Job{ID: "job-1"},
 	}
 
 	_, err := stage.Process(ctx, dc)
@@ -149,6 +151,7 @@ func TestExtractStage_MarkdownRouting(t *testing.T) {
 	dc := &DocumentContext{
 		Version:  &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1"},
 		Document: &models.Document{ObjectKey: "key", MimeType: extract.MimeMarkdown},
+		Job:      &models.Job{ID: "job-1"},
 	}
 
 	result, err := stage.Process(ctx, dc)
@@ -173,6 +176,7 @@ func TestExtractStage_CSVRouting(t *testing.T) {
 	dc := &DocumentContext{
 		Version:  &models.DocumentVersion{ID: "ver-1", DocumentID: "doc-1"},
 		Document: &models.Document{ObjectKey: "key", MimeType: extract.MimeCSV},
+		Job:      &models.Job{ID: "job-1"},
 	}
 
 	result, err := stage.Process(ctx, dc)

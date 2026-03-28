@@ -1,4 +1,8 @@
-// Package main is the entry point for the application.
+// Package main is the entry point for the ingestion worker sidecar.
+//
+// The worker subscribes to the ingestion queue via herald and runs the
+// pipeline for each job. Pipeline signals are bridged to a job-status
+// herald stream for SSE fanout to app instances.
 package main
 
 import (
@@ -7,6 +11,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -14,35 +20,26 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/opensearch-project/opensearch-go/v4"
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/zoobz-io/aperture"
-	"github.com/zoobz-io/herald"
-	heraldredis "github.com/zoobz-io/herald/redis"
 	astqlpg "github.com/zoobz-io/astql/postgres"
 	"github.com/zoobz-io/capitan"
 	"github.com/zoobz-io/cereal"
 	grubminio "github.com/zoobz-io/grub/minio"
 	grubopensearch "github.com/zoobz-io/grub/opensearch"
-	grubredis "github.com/zoobz-io/grub/redis"
+	"github.com/zoobz-io/herald"
+	heraldredis "github.com/zoobz-io/herald/redis"
 	osrenderer "github.com/zoobz-io/lucene/opensearch"
 	"github.com/zoobz-io/sum"
 	"github.com/zoobz-io/vex"
 	vexopenai "github.com/zoobz-io/vex/openai"
-	zynopenai "github.com/zoobz-io/zyn/openai"
 	"github.com/zoobz-io/zyn"
+	zynopenai "github.com/zoobz-io/zyn/openai"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	admincontracts "github.com/zoobz-io/argus/admin/contracts"
-	adminhandlers "github.com/zoobz-io/argus/admin/handlers"
-	apicontracts "github.com/zoobz-io/argus/api/contracts"
-	"github.com/zoobz-io/argus/api/handlers"
-	"github.com/zoobz-io/argus/api/wire"
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/ingest"
-	intotel "github.com/zoobz-io/argus/internal/otel"
-	"github.com/zoobz-io/argus/internal/vocabulary"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/proto"
 	"github.com/zoobz-io/argus/stores"
@@ -57,20 +54,18 @@ func main() {
 }
 
 func run() error {
-	log.Println("starting...")
-	ctx := context.Background()
+	log.Println("starting worker...")
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
 	// Initialize sum service and registry.
-	svc := sum.New()
+	_ = sum.New()
 	k := sum.Start()
 
 	// =========================================================================
 	// 1. Load Configuration
 	// =========================================================================
 
-	if err := sum.Config[config.App](ctx, k, nil); err != nil {
-		return fmt.Errorf("failed to load app config: %w", err)
-	}
 	if err := sum.Config[config.Database](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load database config: %w", err)
 	}
@@ -101,16 +96,19 @@ func run() error {
 	if err := sum.Config[config.Encryption](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load encryption config: %w", err)
 	}
+	if err := sum.Config[config.Worker](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load worker config: %w", err)
+	}
+
 	encCfg := sum.MustUse[config.Encryption](ctx)
 	encKey, err := hex.DecodeString(encCfg.Key)
 	if err != nil {
 		return fmt.Errorf("failed to decode encryption key: %w", err)
 	}
-	aesEncryptor, err := cereal.AES(encKey)
+	_, err = cereal.AES(encKey)
 	if err != nil {
 		return fmt.Errorf("failed to create AES encryptor: %w", err)
 	}
-	svc.WithEncryptor(cereal.EncryptAES, aesEncryptor)
 
 	// =========================================================================
 	// 2. Connect to Infrastructure
@@ -124,7 +122,6 @@ func run() error {
 	}
 	defer func() { _ = db.Close() }()
 	log.Println("database connected")
-	capitan.Emit(ctx, events.StartupDatabaseConnected)
 
 	// Storage (MinIO)
 	storageCfg := sum.MustUse[config.Storage](ctx)
@@ -137,7 +134,6 @@ func run() error {
 	}
 	bucketProvider := grubminio.New(minioClient, storageCfg.Bucket)
 	log.Println("storage connected")
-	capitan.Emit(ctx, events.StartupStorageConnected)
 
 	// Redis
 	redisCfg := sum.MustUse[config.Redis](ctx)
@@ -148,10 +144,7 @@ func run() error {
 	if pingErr := redisClient.Ping(ctx).Err(); pingErr != nil {
 		return fmt.Errorf("failed to connect to redis: %w", pingErr)
 	}
-	redisProvider := grubredis.New(redisClient)
-	_ = redisProvider // Available for cache stores.
 	log.Println("redis connected")
-	capitan.Emit(ctx, events.StartupRedisConnected)
 
 	// OpenSearch
 	osCfg := sum.MustUse[config.OpenSearch](ctx)
@@ -167,7 +160,6 @@ func run() error {
 		Version: osrenderer.V2,
 	})
 	log.Println("opensearch connected")
-	capitan.Emit(ctx, events.StartupOpenSearchConnected)
 
 	// OCR (gRPC)
 	ocrCfg := sum.MustUse[config.OCR](ctx)
@@ -178,7 +170,6 @@ func run() error {
 	defer func() { _ = ocrConn.Close() }()
 	ocrClient := proto.NewOCRServiceClient(ocrConn)
 	log.Println("ocr service connected")
-	capitan.Emit(ctx, events.StartupOCRConnected)
 
 	// Convert (gRPC)
 	convertCfg := sum.MustUse[config.Convert](ctx)
@@ -217,7 +208,6 @@ func run() error {
 		return fmt.Errorf("failed to create analyzer synapse: %w", err)
 	}
 	analyzer := ingest.NewSynapseAnalyzer(analyzerSynapse)
-
 	log.Println("llm provider initialized")
 
 	// Embeddings (vex)
@@ -235,36 +225,12 @@ func run() error {
 	log.Println("embedding provider initialized")
 
 	// =========================================================================
-	// 3. Create and Register Stores
+	// 3. Create and Register Internal Contracts
 	// =========================================================================
 
 	renderer := astqlpg.New()
-
 	allStores := stores.New(db, renderer, bucketProvider, searchProvider)
 
-	// Public API contracts
-	sum.Register[apicontracts.Tenants](k, allStores.Tenants)
-	sum.Register[apicontracts.Providers](k, allStores.Providers)
-	sum.Register[apicontracts.WatchedPaths](k, allStores.WatchedPaths)
-	sum.Register[apicontracts.Documents](k, allStores.Documents)
-	sum.Register[apicontracts.DocumentVersions](k, allStores.DocumentVersions)
-	sum.Register[apicontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
-	sum.Register[apicontracts.QueryEmbedder](k, embedService)
-	sum.Register[apicontracts.Topics](k, allStores.Topics)
-	sum.Register[apicontracts.Tags](k, allStores.Tags)
-	sum.Register[apicontracts.JobReader](k, allStores.Jobs)
-
-	// Admin API contracts
-	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
-	sum.Register[admincontracts.Providers](k, allStores.Providers)
-	sum.Register[admincontracts.WatchedPaths](k, allStores.WatchedPaths)
-	sum.Register[admincontracts.Documents](k, allStores.Documents)
-	sum.Register[admincontracts.DocumentVersions](k, allStores.DocumentVersions)
-	sum.Register[admincontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
-	sum.Register[admincontracts.Topics](k, allStores.Topics)
-	sum.Register[admincontracts.Tags](k, allStores.Tags)
-
-	// Internal contracts (ingestion pipeline — used by enqueuer)
 	sum.Register[intcontracts.IngestVersions](k, allStores.DocumentVersions)
 	sum.Register[intcontracts.IngestDocuments](k, allStores.Documents)
 	sum.Register[intcontracts.IngestSearch](k, allStores.DocumentVersionSearch)
@@ -277,79 +243,123 @@ func run() error {
 	sum.Register[intcontracts.Analyzer](k, analyzer)
 	sum.Register[intcontracts.Embedder](k, embedService)
 
-	// Async ingestion enqueuer (replaces sync pipeline)
-	enqueuer := ingest.NewEnqueuer()
-	sum.Register[apicontracts.IngestEnqueuer](k, enqueuer)
-
-	vocabPipeline := vocabulary.New()
-	sum.Register[apicontracts.Vocabulary](k, vocabPipeline)
-	sum.Register[admincontracts.Vocabulary](k, vocabPipeline)
-
 	// =========================================================================
-	// 4. Register Boundaries
+	// 4. Create Pipeline and Freeze
 	// =========================================================================
 
-	// Model boundaries
-	sum.NewBoundary[models.Tenant](k)
-	sum.NewBoundary[models.Provider](k)
-	sum.NewBoundary[models.WatchedPath](k)
-	sum.NewBoundary[models.Document](k)
-	sum.NewBoundary[models.DocumentVersion](k)
-
-	// Wire boundaries
-	wire.RegisterBoundaries(k)
-
-	// =========================================================================
-	// 5. Freeze Registry
-	// =========================================================================
-
+	pipeline := ingest.New()
 	sum.Freeze(k)
-	capitan.Emit(ctx, events.StartupServicesReady)
 
 	// =========================================================================
-	// 6. Initialize Observability (OTEL + Aperture)
+	// 5. Signal Bridge: pipeline signals → JobStatusSignal
 	// =========================================================================
 
-	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if otelEndpoint == "" {
-		otelEndpoint = "localhost:4318"
-	}
-	serviceName := os.Getenv("OTEL_SERVICE_NAME")
-	if serviceName == "" {
-		serviceName = "argus"
+	bridge := func(stage string) func(context.Context, *capitan.Event) {
+		return func(ctx context.Context, e *capitan.Event) {
+			jobID, _ := events.IngestJobIDKey.From(e)
+			versionID, _ := events.IngestVersionIDKey.From(e)
+			documentID, _ := events.IngestDocumentIDKey.From(e)
+			tenantID, _ := events.IngestTenantIDKey.From(e)
+			var errMsg string
+			if ingestErr, ok := events.IngestErrorKey.From(e); ok && ingestErr != nil {
+				errMsg = ingestErr.Error()
+			}
+			capitan.Emit(ctx, events.JobStatusSignal, events.JobStatusKey.Field(events.JobStatusEvent{
+				JobID:      jobID,
+				VersionID:  versionID,
+				DocumentID: documentID,
+				TenantID:   tenantID,
+				Stage:      stage,
+				Error:      errMsg,
+			}))
+		}
 	}
 
-	otelProviders, err := intotel.New(ctx, intotel.Config{
-		Endpoint:    otelEndpoint,
-		ServiceName: serviceName,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create otel providers: %w", err)
-	}
-	defer func() { _ = otelProviders.Shutdown(ctx) }()
-	log.Println("observability initialized")
-	capitan.Emit(ctx, events.StartupOTELReady)
+	capitan.Hook(events.IngestStarted, bridge("started"))
+	capitan.Hook(events.IngestExtracted, bridge("extracted"))
+	capitan.Hook(events.IngestSummarized, bridge("analyzed"))
+	capitan.Hook(events.IngestEmbedded, bridge("embedded"))
+	capitan.Hook(events.IngestIndexed, bridge("indexed"))
+	capitan.Hook(events.IngestCompleted, bridge("completed"))
+	capitan.Hook(events.IngestFailed, bridge("failed"))
 
-	// Initialize aperture to bridge capitan events → OTEL.
-	ap, err := aperture.New(
-		capitan.Default(),
-		otelProviders.Log,
-		otelProviders.Metric,
-		otelProviders.Trace,
+	// =========================================================================
+	// 6. Herald Publisher: JobStatusSignal → argus:job-status stream
+	// =========================================================================
+
+	jobStatusStream := heraldredis.New("argus:job-status", heraldredis.WithClient(redisClient))
+	jobStatusPub := herald.NewPublisher(
+		jobStatusStream,
+		events.JobStatusSignal,
+		events.JobStatusKey,
+		[]herald.Option[events.JobStatusEvent]{
+			herald.WithRetry[events.JobStatusEvent](3),
+			herald.WithBackoff[events.JobStatusEvent](3, 500*time.Millisecond),
+		},
 	)
-	if err != nil {
-		return fmt.Errorf("failed to create aperture: %w", err)
-	}
-	defer ap.Close()
-	capitan.Emit(ctx, events.StartupApertureReady)
+	jobStatusPub.Start()
+	defer func() { _ = jobStatusPub.Close() }()
+	log.Println("job status publisher initialized")
 
 	// =========================================================================
-	// 7. Herald: Ingestion Queue Publisher + Job Status Subscriber
+	// 7. Notification Hooks + Herald Publisher
 	// =========================================================================
 
-	// Publisher: enqueuer emits IngestQueueSignal → herald publishes to argus:ingestion stream.
-	ingestStream := heraldredis.New("argus:ingestion", heraldredis.WithClient(redisClient))
-	ingestPub := herald.NewPublisher(
+	capitan.Hook(events.IngestCompleted, func(ctx context.Context, e *capitan.Event) {
+		versionID, _ := events.IngestVersionIDKey.From(e)
+		documentID, _ := events.IngestDocumentIDKey.From(e)
+		tenantID, _ := events.IngestTenantIDKey.From(e)
+		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
+			TenantID:   tenantID,
+			DocumentID: documentID,
+			VersionID:  versionID,
+			Type:       models.NotificationIngestCompleted,
+			Message:    "Document ingestion completed",
+		}))
+	})
+
+	capitan.Hook(events.IngestFailed, func(ctx context.Context, e *capitan.Event) {
+		versionID, _ := events.IngestVersionIDKey.From(e)
+		documentID, _ := events.IngestDocumentIDKey.From(e)
+		tenantID, _ := events.IngestTenantIDKey.From(e)
+		ingestErr, _ := events.IngestErrorKey.From(e)
+		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
+			TenantID:   tenantID,
+			DocumentID: documentID,
+			VersionID:  versionID,
+			Type:       models.NotificationIngestFailed,
+			Message:    "Document ingestion failed",
+			Error:      ingestErr.Error(),
+		}))
+	})
+
+	notifStream := heraldredis.New("argus:notifications", heraldredis.WithClient(redisClient))
+	notifPub := herald.NewPublisher(
+		notifStream,
+		events.NotificationSignal,
+		events.NotificationKey,
+		[]herald.Option[models.Notification]{
+			herald.WithRetry[models.Notification](3),
+			herald.WithBackoff[models.Notification](3, 500*time.Millisecond),
+		},
+	)
+	notifPub.Start()
+	defer func() { _ = notifPub.Close() }()
+	log.Println("notification hooks and publisher initialized")
+
+	// =========================================================================
+	// 8. Herald Subscriber: argus:ingestion → run pipeline
+	// =========================================================================
+
+	workerCfg := sum.MustUse[config.Worker](ctx)
+	hostname, _ := os.Hostname()
+
+	ingestStream := heraldredis.New("argus:ingestion",
+		heraldredis.WithClient(redisClient),
+		heraldredis.WithGroup(workerCfg.ConsumerGroup),
+		heraldredis.WithConsumer(hostname),
+	)
+	ingestSub := herald.NewSubscriber(
 		ingestStream,
 		events.IngestQueueSignal,
 		events.IngestQueueKey,
@@ -357,40 +367,27 @@ func run() error {
 			herald.WithRetry[events.IngestMessage](3),
 		},
 	)
-	ingestPub.Start()
-	defer func() { _ = ingestPub.Close() }()
-	log.Println("ingestion queue publisher initialized")
+	ingestSub.Start(ctx)
+	defer func() { _ = ingestSub.Close() }()
+	log.Println("ingestion queue subscriber started")
 
-	// Subscriber: job-status stream → JobStatusSignal for SSE handlers.
-	// Each app instance uses a unique consumer group for fanout.
-	hostname, _ := os.Hostname()
-	jobStatusStream := heraldredis.New("argus:job-status",
-		heraldredis.WithClient(redisClient),
-		heraldredis.WithGroup("argus-app-"+hostname),
-		heraldredis.WithConsumer(hostname),
-	)
-	jobStatusSub := herald.NewSubscriber(
-		jobStatusStream,
-		events.JobStatusSignal,
-		events.JobStatusKey,
-		[]herald.Option[events.JobStatusEvent]{},
-	)
-	jobStatusSub.Start(ctx)
-	defer func() { _ = jobStatusSub.Close() }()
-	log.Println("job status subscriber initialized")
+	capitan.Hook(events.IngestQueueSignal, func(ctx context.Context, e *capitan.Event) {
+		msg, ok := events.IngestQueueKey.From(e)
+		if !ok {
+			return
+		}
+		log.Printf("processing job %s (version %s)", msg.JobID, msg.VersionID)
+		if err := pipeline.Ingest(ctx, msg.JobID, msg.VersionID); err != nil {
+			log.Printf("pipeline error for job %s: %v", msg.JobID, err)
+		}
+	})
 
 	// =========================================================================
-	// 8. Register Handlers and Start Server
+	// 9. Block Until Shutdown
 	// =========================================================================
 
-	svc.Handle(handlers.All()...)
-	svc.Handle(adminhandlers.All()...)
-
-	appCfg := sum.MustUse[config.App](ctx)
-	capitan.Emit(ctx, events.StartupServerListening, events.StartupPortKey.Field(appCfg.Port))
-	log.Printf("starting server on port %d...", appCfg.Port)
-
-	_ = ap // Remove when using ap.Apply() above.
-
-	return svc.Run("", appCfg.Port)
+	log.Println("worker ready")
+	<-ctx.Done()
+	log.Println("shutting down...")
+	return nil
 }

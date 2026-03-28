@@ -21,6 +21,8 @@ type IngestVersions interface {
 type IngestJobs interface {
 	// CreateJob creates a new ingestion job.
 	CreateJob(ctx context.Context, versionID, documentID, tenantID string) (*models.Job, error)
+	// GetJob retrieves a job by ID.
+	GetJob(ctx context.Context, id string) (*models.Job, error)
 	// UpdateJobStatus sets the status and optional error for a job.
 	UpdateJobStatus(ctx context.Context, id string, status models.JobStatus, jobErr *string) error
 }

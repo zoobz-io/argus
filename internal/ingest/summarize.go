@@ -55,6 +55,8 @@ func newAnalyzeStage() pipz.Chainable[*DocumentContext] {
 
 			capitan.Info(ctx, events.IngestSummarized,
 				events.IngestVersionIDKey.Field(dc.Version.ID),
+				events.IngestDocumentIDKey.Field(dc.Version.DocumentID),
+				events.IngestJobIDKey.Field(dc.Job.ID),
 			)
 			return dc, nil
 		},

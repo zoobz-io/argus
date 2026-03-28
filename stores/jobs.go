@@ -40,6 +40,15 @@ func (s *Jobs) CreateJob(ctx context.Context, versionID, documentID, tenantID st
 	return j, nil
 }
 
+// GetJob retrieves a job by ID.
+func (s *Jobs) GetJob(ctx context.Context, id string) (*models.Job, error) {
+	job, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("getting job: %w", err)
+	}
+	return job, nil
+}
+
 // UpdateJobStatus sets the status (and optional error) for a job.
 func (s *Jobs) UpdateJobStatus(ctx context.Context, id string, status models.JobStatus, jobErr *string) error {
 	params := map[string]any{"id": id, "status": string(status), "updated_at": time.Now()}

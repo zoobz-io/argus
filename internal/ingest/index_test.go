@@ -28,6 +28,7 @@ func (m *mockIngestSearch) IndexVersion(ctx context.Context, version *models.Doc
 
 type mockIngestJobs struct {
 	OnCreateJob       func(ctx context.Context, versionID, documentID, tenantID string) (*models.Job, error)
+	OnGetJob          func(ctx context.Context, id string) (*models.Job, error)
 	OnUpdateJobStatus func(ctx context.Context, id string, status models.JobStatus, jobErr *string) error
 }
 
@@ -36,6 +37,13 @@ func (m *mockIngestJobs) CreateJob(ctx context.Context, versionID, documentID, t
 		return m.OnCreateJob(ctx, versionID, documentID, tenantID)
 	}
 	return &models.Job{ID: "job-default"}, nil
+}
+
+func (m *mockIngestJobs) GetJob(ctx context.Context, id string) (*models.Job, error) {
+	if m.OnGetJob != nil {
+		return m.OnGetJob(ctx, id)
+	}
+	return &models.Job{ID: id, Status: models.JobPending}, nil
 }
 
 func (m *mockIngestJobs) UpdateJobStatus(ctx context.Context, id string, status models.JobStatus, jobErr *string) error {
@@ -47,13 +55,12 @@ func (m *mockIngestJobs) UpdateJobStatus(ctx context.Context, id string, status 
 
 // --- helpers ---
 
-func setupIndexRegistry(t *testing.T, search intcontracts.IngestSearch, jobs intcontracts.IngestJobs) context.Context {
+func setupIndexRegistry(t *testing.T, search intcontracts.IngestSearch) context.Context {
 	t.Helper()
 	sum.Reset()
 	t.Cleanup(sum.Reset)
 	k := sum.Start()
 	sum.Register[intcontracts.IngestSearch](k, search)
-	sum.Register[intcontracts.IngestJobs](k, jobs)
 	sum.Freeze(k)
 	return context.Background()
 }
@@ -90,7 +97,6 @@ func testDocumentContext() *DocumentContext {
 
 func TestIndexStage_HappyPath(t *testing.T) {
 	var indexed *models.DocumentVersionIndex
-	var jobStatus models.JobStatus
 
 	search := &mockIngestSearch{
 		OnIndexVersion: func(_ context.Context, version *models.DocumentVersionIndex) error {
@@ -98,20 +104,8 @@ func TestIndexStage_HappyPath(t *testing.T) {
 			return nil
 		},
 	}
-	jobs := &mockIngestJobs{
-		OnUpdateJobStatus: func(_ context.Context, id string, status models.JobStatus, jobErr *string) error {
-			if id != "job-1" {
-				t.Errorf("job ID: got %q, want %q", id, "job-1")
-			}
-			jobStatus = status
-			if jobErr != nil {
-				t.Errorf("jobErr: expected nil, got %q", *jobErr)
-			}
-			return nil
-		},
-	}
 
-	ctx := setupIndexRegistry(t, search, jobs)
+	ctx := setupIndexRegistry(t, search)
 	stage := newIndexStage()
 	dc := testDocumentContext()
 
@@ -120,7 +114,6 @@ func TestIndexStage_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify field mapping.
 	if indexed == nil {
 		t.Fatal("IndexVersion was not called")
 	}
@@ -166,11 +159,6 @@ func TestIndexStage_HappyPath(t *testing.T) {
 	if !indexed.UpdatedAt.Equal(dc.Document.UpdatedAt) {
 		t.Errorf("UpdatedAt: got %v, want %v", indexed.UpdatedAt, dc.Document.UpdatedAt)
 	}
-
-	// Verify job completed.
-	if jobStatus != models.JobCompleted {
-		t.Errorf("job status: got %q, want %q", jobStatus, models.JobCompleted)
-	}
 }
 
 func TestIndexStage_IndexError(t *testing.T) {
@@ -179,9 +167,8 @@ func TestIndexStage_IndexError(t *testing.T) {
 			return errors.New("index failure")
 		},
 	}
-	jobs := &mockIngestJobs{}
 
-	ctx := setupIndexRegistry(t, search, jobs)
+	ctx := setupIndexRegistry(t, search)
 	stage := newIndexStage()
 	dc := testDocumentContext()
 
@@ -191,30 +178,5 @@ func TestIndexStage_IndexError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "indexing version: index failure") {
 		t.Errorf("error should contain 'indexing version: index failure', got %q", err.Error())
-	}
-}
-
-func TestIndexStage_JobUpdateError(t *testing.T) {
-	search := &mockIngestSearch{
-		OnIndexVersion: func(_ context.Context, _ *models.DocumentVersionIndex) error {
-			return nil
-		},
-	}
-	jobs := &mockIngestJobs{
-		OnUpdateJobStatus: func(_ context.Context, _ string, _ models.JobStatus, _ *string) error {
-			return errors.New("job update failure")
-		},
-	}
-
-	ctx := setupIndexRegistry(t, search, jobs)
-	stage := newIndexStage()
-	dc := testDocumentContext()
-
-	_, err := stage.Process(ctx, dc)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "updating job status: job update failure") {
-		t.Errorf("error should contain 'updating job status: job update failure', got %q", err.Error())
 	}
 }

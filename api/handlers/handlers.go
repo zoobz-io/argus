@@ -36,5 +36,7 @@ func All() []rocco.Endpoint {
 		updateTag,
 		// Ingestion
 		triggerIngest,
+		// Job Status
+		jobStatusStream,
 	}
 }

@@ -21,6 +21,7 @@ func newEmbedStage() pipz.Chainable[*DocumentContext] {
 			if err != nil {
 				capitan.Warn(ctx, events.IngestEmbedFailed,
 					events.IngestVersionIDKey.Field(dc.Version.ID),
+					events.IngestJobIDKey.Field(dc.Job.ID),
 					events.IngestErrorKey.Field(err),
 				)
 				return dc, err
@@ -28,6 +29,8 @@ func newEmbedStage() pipz.Chainable[*DocumentContext] {
 			dc.Embedding = vec
 			capitan.Info(ctx, events.IngestEmbedded,
 				events.IngestVersionIDKey.Field(dc.Version.ID),
+				events.IngestDocumentIDKey.Field(dc.Version.DocumentID),
+				events.IngestJobIDKey.Field(dc.Job.ID),
 			)
 			return dc, nil
 		},

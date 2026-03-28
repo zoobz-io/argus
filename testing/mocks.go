@@ -33,6 +33,8 @@ var (
 	_ admincontracts.Tags                 = (*MockTags)(nil)
 	_ apicontracts.Tags                   = (*MockTags)(nil)
 	_ apicontracts.Ingest                 = (*MockIngest)(nil)
+	_ apicontracts.IngestEnqueuer         = (*MockIngestEnqueuer)(nil)
+	_ apicontracts.JobReader              = (*MockJobReader)(nil)
 	_ apicontracts.QueryEmbedder          = (*MockQueryEmbedder)(nil)
 	_ intcontracts.OCR                    = (*MockOCR)(nil)
 )
@@ -274,12 +276,32 @@ func (m *MockTags) ListTagsByTenant(ctx context.Context, tenantID string) ([]*mo
 
 // MockIngest satisfies api/contracts.Ingest.
 type MockIngest struct {
-	OnIngest func(ctx context.Context, versionID string) error
+	OnIngest func(ctx context.Context, jobID, versionID string) error
 }
 
-func (m *MockIngest) Ingest(ctx context.Context, versionID string) error {
-	if m.OnIngest != nil { return m.OnIngest(ctx, versionID) }
+func (m *MockIngest) Ingest(ctx context.Context, jobID, versionID string) error {
+	if m.OnIngest != nil { return m.OnIngest(ctx, jobID, versionID) }
 	return nil
+}
+
+// MockIngestEnqueuer satisfies api/contracts.IngestEnqueuer.
+type MockIngestEnqueuer struct {
+	OnEnqueue func(ctx context.Context, versionID string) (*models.Job, error)
+}
+
+func (m *MockIngestEnqueuer) Enqueue(ctx context.Context, versionID string) (*models.Job, error) {
+	if m.OnEnqueue != nil { return m.OnEnqueue(ctx, versionID) }
+	return &models.Job{ID: "mock-job", Status: models.JobPending}, nil
+}
+
+// MockJobReader satisfies api/contracts.JobReader.
+type MockJobReader struct {
+	OnGetJob func(ctx context.Context, id string) (*models.Job, error)
+}
+
+func (m *MockJobReader) GetJob(ctx context.Context, id string) (*models.Job, error) {
+	if m.OnGetJob != nil { return m.OnGetJob(ctx, id) }
+	return &models.Job{ID: id, Status: models.JobPending}, nil
 }
 
 // MockQueryEmbedder satisfies api/contracts.QueryEmbedder.
