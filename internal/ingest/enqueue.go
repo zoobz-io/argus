@@ -21,7 +21,8 @@ func NewEnqueuer() *Enqueuer {
 }
 
 // Enqueue creates a pending job and emits the queue signal.
-func (e *Enqueuer) Enqueue(ctx context.Context, versionID string) (*models.Job, error) {
+// tenantID scopes the operation — returns not-found if the version belongs to a different tenant.
+func (e *Enqueuer) Enqueue(ctx context.Context, versionID, tenantID string) (*models.Job, error) {
 	versions := sum.MustUse[intcontracts.IngestVersions](ctx)
 	documents := sum.MustUse[intcontracts.IngestDocuments](ctx)
 	jobs := sum.MustUse[intcontracts.IngestJobs](ctx)
@@ -29,6 +30,10 @@ func (e *Enqueuer) Enqueue(ctx context.Context, versionID string) (*models.Job, 
 	version, err := versions.GetDocumentVersion(ctx, versionID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching document version: %w", err)
+	}
+
+	if version.TenantID != tenantID {
+		return nil, fmt.Errorf("fetching document version: not found")
 	}
 
 	if _, err := documents.GetDocument(ctx, version.DocumentID); err != nil {
@@ -40,7 +45,7 @@ func (e *Enqueuer) Enqueue(ctx context.Context, versionID string) (*models.Job, 
 		return nil, fmt.Errorf("creating job: %w", err)
 	}
 
-	capitan.Info(ctx, events.IngestQueueSignal, events.IngestQueueKey.Field(events.IngestMessage{
+	capitan.Emit(ctx, events.IngestQueueSignal, events.IngestQueueKey.Field(events.IngestMessage{
 		JobID:     job.ID,
 		VersionID: version.ID,
 	}))

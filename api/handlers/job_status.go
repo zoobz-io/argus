@@ -31,15 +31,48 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 	"/jobs/{id}/status",
 	func(r *rocco.Request[rocco.NoBody], stream rocco.Stream[JobStatusSSE]) error {
 		jobID := pathID(r.Params, "id")
+		tid := tenantID(r.Identity)
 
-		// 1. Read current state from DB.
+		// 1. Subscribe to live updates BEFORE reading DB state.
+		// This prevents the race where a job completes between DB read and subscribe.
+		done := make(chan struct{})
+		listener := capitan.Hook(events.JobStatusSignal, func(_ context.Context, e *capitan.Event) {
+			evt, ok := events.JobStatusKey.From(e)
+			if !ok || evt.JobID != jobID {
+				return
+			}
+
+			err := stream.SendEvent(evt.Stage, JobStatusSSE{
+				JobID:  evt.JobID,
+				Status: evt.Stage,
+				Stage:  evt.Stage,
+				Error:  sanitizeError(evt.Error),
+			})
+			if err != nil {
+				return // Client disconnected.
+			}
+
+			if evt.Stage == "completed" || evt.Stage == "failed" {
+				_ = stream.SendEvent("done", JobStatusSSE{
+					JobID:  evt.JobID,
+					Status: evt.Stage,
+					Error:  sanitizeError(evt.Error),
+				})
+				close(done)
+			}
+		})
+		if listener != nil {
+			defer listener.Close()
+		}
+
+		// 2. Read current state from DB (tenant-scoped).
 		reader := sum.MustUse[contracts.JobReader](r)
-		job, err := reader.GetJob(r, jobID)
+		job, err := reader.GetJobByTenant(r, jobID, tid)
 		if err != nil {
 			return ErrJobNotFound
 		}
 
-		// 2. Send current status as initial event.
+		// 3. Send current status as initial event.
 		if err := stream.SendEvent("status", JobStatusSSE{
 			JobID:  job.ID,
 			Status: string(job.Status),
@@ -47,48 +80,36 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 			return err
 		}
 
-		// 3. If already terminal, send done and close.
+		// 4. If already terminal, send done and close.
 		if job.Status == models.JobCompleted || job.Status == models.JobFailed {
-			errMsg := ""
-			if job.Error != nil {
-				errMsg = *job.Error
-			}
 			return stream.SendEvent("done", JobStatusSSE{
 				JobID:  job.ID,
 				Status: string(job.Status),
-				Error:  errMsg,
+				Error:  sanitizeJobError(job),
 			})
 		}
 
-		// 4. Subscribe to live updates via capitan hook.
-		listener := capitan.Hook(events.JobStatusSignal, func(_ context.Context, e *capitan.Event) {
-			evt, ok := events.JobStatusKey.From(e)
-			if !ok || evt.JobID != jobID {
-				return
-			}
-
-			_ = stream.SendEvent(evt.Stage, JobStatusSSE{
-				JobID:  evt.JobID,
-				Status: evt.Stage,
-				Stage:  evt.Stage,
-				Error:  evt.Error,
-			})
-
-			// Close on terminal.
-			if evt.Stage == "completed" || evt.Stage == "failed" {
-				_ = stream.SendEvent("done", JobStatusSSE{
-					JobID:  evt.JobID,
-					Status: evt.Stage,
-					Error:  evt.Error,
-				})
-			}
-		})
-		if listener != nil {
-			defer listener.Close()
+		// 5. Block until terminal event or client disconnect.
+		select {
+		case <-done:
+		case <-stream.Done():
 		}
-
-		// 5. Block until client disconnects.
-		<-stream.Done()
 		return nil
 	},
 ).WithPathParams("id").WithAuthentication()
+
+// sanitizeError returns a generic message for non-empty errors.
+func sanitizeError(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	return "ingestion failed"
+}
+
+// sanitizeJobError returns a generic message if the job has an error.
+func sanitizeJobError(job *models.Job) string {
+	if job.Error == nil || *job.Error == "" {
+		return ""
+	}
+	return "ingestion failed"
+}

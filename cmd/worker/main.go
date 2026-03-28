@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -22,7 +21,6 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	astqlpg "github.com/zoobz-io/astql/postgres"
 	"github.com/zoobz-io/capitan"
-	"github.com/zoobz-io/cereal"
 	grubminio "github.com/zoobz-io/grub/minio"
 	grubopensearch "github.com/zoobz-io/grub/opensearch"
 	"github.com/zoobz-io/herald"
@@ -93,21 +91,8 @@ func run() error {
 	if err := sum.Config[config.Embedding](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load embedding config: %w", err)
 	}
-	if err := sum.Config[config.Encryption](ctx, k, nil); err != nil {
-		return fmt.Errorf("failed to load encryption config: %w", err)
-	}
 	if err := sum.Config[config.Worker](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load worker config: %w", err)
-	}
-
-	encCfg := sum.MustUse[config.Encryption](ctx)
-	encKey, err := hex.DecodeString(encCfg.Key)
-	if err != nil {
-		return fmt.Errorf("failed to decode encryption key: %w", err)
-	}
-	_, err = cereal.AES(encKey)
-	if err != nil {
-		return fmt.Errorf("failed to create AES encryptor: %w", err)
 	}
 
 	// =========================================================================
@@ -322,14 +307,18 @@ func run() error {
 		versionID, _ := events.IngestVersionIDKey.From(e)
 		documentID, _ := events.IngestDocumentIDKey.From(e)
 		tenantID, _ := events.IngestTenantIDKey.From(e)
-		ingestErr, _ := events.IngestErrorKey.From(e)
+		ingestErr, ok := events.IngestErrorKey.From(e)
+		var errMsg string
+		if ok && ingestErr != nil {
+			errMsg = ingestErr.Error()
+		}
 		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
 			TenantID:   tenantID,
 			DocumentID: documentID,
 			VersionID:  versionID,
 			Type:       models.NotificationIngestFailed,
 			Message:    "Document ingestion failed",
-			Error:      ingestErr.Error(),
+			Error:      errMsg,
 		}))
 	})
 

@@ -49,6 +49,24 @@ func (s *Jobs) GetJob(ctx context.Context, id string) (*models.Job, error) {
 	return job, nil
 }
 
+// GetJobByTenant retrieves a job by ID scoped to a tenant.
+// Returns not-found if the job does not exist or belongs to a different tenant.
+func (s *Jobs) GetJobByTenant(ctx context.Context, id, tenantID string) (*models.Job, error) {
+	params := map[string]any{"id": id, "tenant_id": tenantID}
+	q := s.Query().
+		Where("id", "=", "id").
+		Where("tenant_id", "=", "tenant_id").
+		Limit(1)
+	results, err := q.Exec(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("getting job by tenant: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("job not found")
+	}
+	return results[0], nil
+}
+
 // UpdateJobStatus sets the status (and optional error) for a job.
 func (s *Jobs) UpdateJobStatus(ctx context.Context, id string, status models.JobStatus, jobErr *string) error {
 	params := map[string]any{"id": id, "status": string(status), "updated_at": time.Now()}

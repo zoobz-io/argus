@@ -104,7 +104,9 @@ func (p *Pipeline) Ingest(ctx context.Context, jobID, versionID string) error {
 		return fmt.Errorf("pipeline failed: %w", err)
 	}
 
-	_ = jobs.UpdateJobStatus(ctx, job.ID, models.JobCompleted, nil)
+	if err := jobs.UpdateJobStatus(ctx, job.ID, models.JobCompleted, nil); err != nil {
+		return fmt.Errorf("updating job to completed: %w", err)
+	}
 
 	capitan.Info(ctx, events.IngestCompleted,
 		events.IngestVersionIDKey.Field(version.ID),

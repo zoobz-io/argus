@@ -286,21 +286,21 @@ func (m *MockIngest) Ingest(ctx context.Context, jobID, versionID string) error 
 
 // MockIngestEnqueuer satisfies api/contracts.IngestEnqueuer.
 type MockIngestEnqueuer struct {
-	OnEnqueue func(ctx context.Context, versionID string) (*models.Job, error)
+	OnEnqueue func(ctx context.Context, versionID, tenantID string) (*models.Job, error)
 }
 
-func (m *MockIngestEnqueuer) Enqueue(ctx context.Context, versionID string) (*models.Job, error) {
-	if m.OnEnqueue != nil { return m.OnEnqueue(ctx, versionID) }
+func (m *MockIngestEnqueuer) Enqueue(ctx context.Context, versionID, tenantID string) (*models.Job, error) {
+	if m.OnEnqueue != nil { return m.OnEnqueue(ctx, versionID, tenantID) }
 	return &models.Job{ID: "mock-job", Status: models.JobPending}, nil
 }
 
 // MockJobReader satisfies api/contracts.JobReader.
 type MockJobReader struct {
-	OnGetJob func(ctx context.Context, id string) (*models.Job, error)
+	OnGetJobByTenant func(ctx context.Context, id, tenantID string) (*models.Job, error)
 }
 
-func (m *MockJobReader) GetJob(ctx context.Context, id string) (*models.Job, error) {
-	if m.OnGetJob != nil { return m.OnGetJob(ctx, id) }
+func (m *MockJobReader) GetJobByTenant(ctx context.Context, id, tenantID string) (*models.Job, error) {
+	if m.OnGetJobByTenant != nil { return m.OnGetJobByTenant(ctx, id, tenantID) }
 	return &models.Job{ID: id, Status: models.JobPending}, nil
 }
 

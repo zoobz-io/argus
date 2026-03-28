@@ -29,7 +29,7 @@ func (r IngestResponse) Clone() IngestResponse {
 
 var triggerIngest = rocco.POST[IngestRequest, IngestResponse]("/ingest", func(r *rocco.Request[IngestRequest]) (IngestResponse, error) {
 	enqueuer := sum.MustUse[contracts.IngestEnqueuer](r)
-	job, err := enqueuer.Enqueue(r, r.Body.VersionID)
+	job, err := enqueuer.Enqueue(r, r.Body.VersionID, tenantID(r.Identity))
 	if err != nil {
 		return IngestResponse{}, err
 	}

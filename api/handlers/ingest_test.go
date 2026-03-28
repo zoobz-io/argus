@@ -30,7 +30,7 @@ func TestIngestResponse_Clone(t *testing.T) {
 func TestTriggerIngest_Success(t *testing.T) {
 	var capturedVersionID string
 	mock := &argustest.MockIngestEnqueuer{
-		OnEnqueue: func(_ context.Context, versionID string) (*models.Job, error) {
+		OnEnqueue: func(_ context.Context, versionID, _ string) (*models.Job, error) {
 			capturedVersionID = versionID
 			return &models.Job{ID: "job-1", Status: models.JobPending}, nil
 		},
@@ -59,7 +59,7 @@ func TestTriggerIngest_Success(t *testing.T) {
 
 func TestTriggerIngest_Error(t *testing.T) {
 	mock := &argustest.MockIngestEnqueuer{
-		OnEnqueue: func(_ context.Context, _ string) (*models.Job, error) {
+		OnEnqueue: func(_ context.Context, _, _ string) (*models.Job, error) {
 			return nil, fmt.Errorf("pipeline failed")
 		},
 	}
