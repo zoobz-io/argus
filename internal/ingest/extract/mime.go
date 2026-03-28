@@ -32,3 +32,8 @@ const (
 	MimeXLS = "application/vnd.ms-excel"
 	MimePPT = "application/vnd.ms-powerpoint"
 )
+
+// Common XML element names used across format-specific extractors.
+const (
+	xmlElemTab = "tab"
+)

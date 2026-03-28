@@ -13,17 +13,23 @@
   },
   "mappings": {
     "properties": {
+      "created_at": {
+        "type": "date"
+      },
+      "updated_at": {
+        "type": "date"
+      },
       "version_id": {
-        "type": "long"
+        "type": "keyword"
       },
       "document_id": {
-        "type": "long"
+        "type": "keyword"
       },
       "tenant_id": {
-        "type": "long"
+        "type": "keyword"
       },
       "provider_id": {
-        "type": "long"
+        "type": "keyword"
       },
       "document_name": {
         "type": "text",
@@ -43,13 +49,22 @@
       "summary": {
         "type": "text"
       },
+      "language": {
+        "type": "keyword"
+      },
+      "topics": {
+        "type": "keyword"
+      },
+      "tags": {
+        "type": "keyword"
+      },
       "embedding": {
         "type": "knn_vector",
         "dimension": 1536,
         "method": {
           "name": "hnsw",
           "space_type": "cosinesimil",
-          "engine": "nmslib"
+          "engine": "lucene"
         }
       }
     }

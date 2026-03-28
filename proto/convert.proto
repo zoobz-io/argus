@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package argus.convert.v1;
+
+option go_package = "github.com/zoobz-io/argus/proto;proto";
+
+service ConvertService {
+  // ConvertDocument converts legacy binary Office formats to modern OOXML equivalents.
+  rpc ConvertDocument(ConvertRequest) returns (ConvertResponse);
+}
+
+message ConvertRequest {
+  // Raw document bytes (DOC, XLS, PPT).
+  bytes document = 1;
+  // MIME type of the input document.
+  string mime_type = 2;
+}
+
+message ConvertResponse {
+  // Converted document bytes (DOCX, XLSX, PPTX).
+  bytes document = 1;
+  // MIME type of the converted output.
+  string mime_type = 2;
+}

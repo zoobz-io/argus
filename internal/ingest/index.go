@@ -18,7 +18,7 @@ func newIndexStage() pipz.Chainable[*DocumentContext] {
 		IndexID,
 		func(ctx context.Context, dc *DocumentContext) (*DocumentContext, error) {
 			search := sum.MustUse[intcontracts.IngestSearch](ctx)
-			versions := sum.MustUse[intcontracts.IngestVersions](ctx)
+			jobs := sum.MustUse[intcontracts.IngestJobs](ctx)
 
 			idx := &models.DocumentVersionIndex{
 				VersionID:    dc.Version.ID,
@@ -29,15 +29,20 @@ func newIndexStage() pipz.Chainable[*DocumentContext] {
 				MimeType:     dc.Document.MimeType,
 				Content:      dc.Content,
 				Summary:      dc.Summary,
+				Language:     dc.Language,
+				Topics:       dc.Topics,
+				Tags:         dc.Tags,
 				Embedding:    dc.Embedding,
+				CreatedAt:    dc.Version.CreatedAt,
+				UpdatedAt:    dc.Document.UpdatedAt,
 			}
 
 			if err := search.IndexVersion(ctx, idx); err != nil {
 				return dc, fmt.Errorf("indexing version: %w", err)
 			}
 
-			if err := versions.UpdateExtractionStatus(ctx, dc.Version.ID, models.ExtractionCompleted); err != nil {
-				return dc, fmt.Errorf("updating extraction status: %w", err)
+			if err := jobs.UpdateJobStatus(ctx, dc.Job.ID, models.JobCompleted, nil); err != nil {
+				return dc, fmt.Errorf("updating job status: %w", err)
 			}
 
 			capitan.Info(ctx, events.IngestIndexed,

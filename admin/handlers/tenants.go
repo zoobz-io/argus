@@ -10,23 +10,20 @@ import (
 
 var listTenants = rocco.GET[rocco.NoBody, wire.AdminTenantListResponse]("/tenants", func(r *rocco.Request[rocco.NoBody]) (wire.AdminTenantListResponse, error) {
 	store := sum.MustUse[contracts.Tenants](r)
-	page := cursorPageFromQuery(r.Params)
+	page := offsetPageFromQuery(r.Params)
 	result, err := store.ListTenants(r, page)
 	if err != nil {
 		return wire.AdminTenantListResponse{}, err
 	}
-	return transformers.TenantsToAdminList(result, page.PageSize()), nil
+	return transformers.TenantsToAdminList(result), nil
 }).
 	WithSummary("List tenants").
 	WithTags("tenants").
-	WithQueryParams("cursor", "limit").
+	WithQueryParams("offset", "limit").
 	WithAuthentication()
 
 var getTenant = rocco.GET[rocco.NoBody, wire.AdminTenantResponse]("/tenants/{id}", func(r *rocco.Request[rocco.NoBody]) (wire.AdminTenantResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.AdminTenantResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Tenants](r)
 	tenant, err := store.GetTenant(r, id)
 	if err != nil {
@@ -55,10 +52,7 @@ var createTenant = rocco.POST[wire.AdminTenantCreateRequest, wire.AdminTenantRes
 	WithErrors(rocco.ErrValidationFailed)
 
 var updateTenant = rocco.PUT[wire.AdminTenantCreateRequest, wire.AdminTenantResponse]("/tenants/{id}", func(r *rocco.Request[wire.AdminTenantCreateRequest]) (wire.AdminTenantResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.AdminTenantResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Tenants](r)
 	tenant, err := store.UpdateTenant(r, id, r.Body.Name, r.Body.Slug)
 	if err != nil {
@@ -73,10 +67,7 @@ var updateTenant = rocco.PUT[wire.AdminTenantCreateRequest, wire.AdminTenantResp
 	WithErrors(ErrTenantNotFound, rocco.ErrValidationFailed)
 
 var deleteTenant = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/tenants/{id}", func(r *rocco.Request[rocco.NoBody]) (rocco.NoBody, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return rocco.NoBody{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Tenants](r)
 	if err := store.DeleteTenant(r, id); err != nil {
 		return rocco.NoBody{}, ErrTenantNotFound

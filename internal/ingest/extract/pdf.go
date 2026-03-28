@@ -1,27 +1,55 @@
 package extract
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"strings"
 
+	"github.com/ledongthuc/pdf"
 	"github.com/zoobz-io/sum"
 
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/proto"
 )
 
-// PDF extracts text from PDF documents. Currently delegates to OCR which
-// handles both text-based and scanned PDFs. A future optimization could
-// attempt direct text extraction first and fall back to OCR only for
-// image-only PDFs.
+// PDF extracts text from PDF documents. Attempts direct text extraction
+// first using ledongthuc/pdf, falling back to OCR via the Tesseract
+// sidecar for scanned or image-only PDFs.
 func PDF(ctx context.Context, data []byte) (string, error) {
+	text, err := pdfText(data)
+	if err == nil && strings.TrimSpace(text) != "" {
+		return strings.TrimSpace(text), nil
+	}
+
+	// Text layer empty or unreadable — fall back to OCR.
 	ocr := sum.MustUse[intcontracts.OCR](ctx)
 	resp, err := ocr.ExtractText(ctx, &proto.ExtractTextRequest{
 		Document: data,
-		MimeType: "application/pdf",
+		MimeType: MimePDF,
 	})
 	if err != nil {
-		return "", fmt.Errorf("pdf extraction: %w", err)
+		return "", fmt.Errorf("pdf ocr fallback: %w", err)
 	}
 	return resp.GetText(), nil
+}
+
+// pdfText extracts embedded text from a PDF using ledongthuc/pdf.
+func pdfText(data []byte) (string, error) {
+	r, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "", fmt.Errorf("opening pdf: %w", err)
+	}
+
+	plainText, err := r.GetPlainText()
+	if err != nil {
+		return "", fmt.Errorf("extracting text: %w", err)
+	}
+
+	text, err := io.ReadAll(plainText)
+	if err != nil {
+		return "", fmt.Errorf("reading text: %w", err)
+	}
+	return string(text), nil
 }

@@ -192,6 +192,25 @@ services:
     volumes:
       - .:/app
 
+  notifier:
+    build:
+      context: .
+      dockerfile: tools/dev/Dockerfile.dev
+    depends_on:
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    environment:
+      APP_REDIS_ADDR: redis:6379
+      APP_OPENSEARCH_ADDR: http://opensearch:9200
+      APP_NOTIFIER_CONSUMER_GROUP: argus-notifier
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: argus-notifier
+    command: ["go", "run", "./cmd/notifier"]
+    volumes:
+      - .:/app
+
 volumes:
   pgdata:
   redisdata:

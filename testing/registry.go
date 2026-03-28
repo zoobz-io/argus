@@ -1,0 +1,148 @@
+//go:build testing
+
+package argustest
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	admincontracts "github.com/zoobz-io/argus/admin/contracts"
+	apicontracts "github.com/zoobz-io/argus/api/contracts"
+	intcontracts "github.com/zoobz-io/argus/internal/contracts"
+	"github.com/zoobz-io/argus/models"
+	"github.com/zoobz-io/rocco"
+	rtesting "github.com/zoobz-io/rocco/testing"
+	"github.com/zoobz-io/sum"
+)
+
+// RegistryOption configures a mock contract in the sum registry.
+type RegistryOption func(k sum.Key)
+
+// API contract options.
+
+func WithAPITenants(m *MockTenants) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Tenants](k, m) }
+}
+func WithAPIProviders(m *MockProviders) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Providers](k, m) }
+}
+func WithAPIWatchedPaths(m *MockWatchedPaths) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.WatchedPaths](k, m) }
+}
+func WithAPIDocuments(m *MockDocuments) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Documents](k, m) }
+}
+func WithAPIDocumentVersions(m *MockDocumentVersions) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.DocumentVersions](k, m) }
+}
+func WithAPIDocumentVersionSearch(m *MockDocumentVersionSearch) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.DocumentVersionSearch](k, m) }
+}
+func WithAPITopics(m *MockTopics) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Topics](k, m) }
+}
+func WithAPITags(m *MockTags) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Tags](k, m) }
+}
+func WithAPIIngest(m *MockIngest) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Ingest](k, m) }
+}
+func WithAPIQueryEmbedder(m *MockQueryEmbedder) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.QueryEmbedder](k, m) }
+}
+func WithAPIVocabulary(m *MockVocabulary) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Vocabulary](k, m) }
+}
+
+// Admin contract options.
+
+func WithAdminTenants(m *MockTenants) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Tenants](k, m) }
+}
+func WithAdminProviders(m *MockProviders) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Providers](k, m) }
+}
+func WithAdminWatchedPaths(m *MockWatchedPaths) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.WatchedPaths](k, m) }
+}
+func WithAdminDocuments(m *MockDocuments) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Documents](k, m) }
+}
+func WithAdminDocumentVersions(m *MockDocumentVersions) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.DocumentVersions](k, m) }
+}
+func WithAdminTopics(m *MockTopics) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Topics](k, m) }
+}
+func WithAdminTags(m *MockTags) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Tags](k, m) }
+}
+func WithAdminVocabulary(m *MockVocabulary) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Vocabulary](k, m) }
+}
+
+// Internal contract options.
+
+func WithOCR(m *MockOCR) RegistryOption {
+	return func(k sum.Key) { sum.Register[intcontracts.OCR](k, m) }
+}
+func WithConverter(m *MockConverter) RegistryOption {
+	return func(k sum.Key) { sum.Register[intcontracts.Converter](k, m) }
+}
+func WithClassifier(m *MockClassifier) RegistryOption {
+	return func(k sum.Key) { sum.Register[intcontracts.Classifier](k, m) }
+}
+
+// WithBoundaries registers additional boundaries (e.g., wire.RegisterBoundaries).
+func WithBoundaries(fn func(k sum.Key)) RegistryOption {
+	return func(k sum.Key) { fn(k) }
+}
+
+// SetupRegistry creates a fresh sum registry with the given mock contracts,
+// model boundaries, and wire boundaries. Returns context.Background().
+func SetupRegistry(t *testing.T, opts ...RegistryOption) context.Context {
+	t.Helper()
+	sum.Reset()
+	sum.New()
+	k := sum.Start()
+
+	for _, opt := range opts {
+		opt(k)
+	}
+
+	// Model boundaries.
+	sum.NewBoundary[models.Tenant](k)
+	sum.NewBoundary[models.Provider](k)
+	sum.NewBoundary[models.WatchedPath](k)
+	sum.NewBoundary[models.Document](k)
+	sum.NewBoundary[models.DocumentVersion](k)
+
+	sum.Freeze(k)
+	t.Cleanup(sum.Reset)
+	return context.Background()
+}
+
+// SetupAPIEngine creates a rocco test engine with authenticated mock identity
+// (tenant-1) and all API handlers registered.
+func SetupAPIEngine(t *testing.T, handlers []rocco.Endpoint, opts ...RegistryOption) *rocco.Engine {
+	t.Helper()
+	_ = SetupRegistry(t, opts...)
+
+	identity := rtesting.NewMockIdentity("user-1").WithTenantID("tenant-1")
+	return rtesting.TestEngineWithAuth(func(_ context.Context, _ *http.Request) (rocco.Identity, error) {
+		return identity, nil
+	}).WithHandlers(handlers...)
+}
+
+// SetupAdminEngine creates a rocco test engine with admin mock identity
+// and all admin handlers registered.
+func SetupAdminEngine(t *testing.T, handlers []rocco.Endpoint, opts ...RegistryOption) *rocco.Engine {
+	t.Helper()
+	_ = SetupRegistry(t, opts...)
+
+	identity := rtesting.NewMockIdentity("admin-1").WithRoles("admin")
+	return rtesting.TestEngineWithAuth(func(_ context.Context, _ *http.Request) (rocco.Identity, error) {
+		return identity, nil
+	}).WithHandlers(handlers...)
+}

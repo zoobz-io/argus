@@ -27,14 +27,14 @@ type Provider struct {
 	Type        ProviderType `json:"type" db:"type" constraints:"notnull"`
 	Name        string       `json:"name" db:"name" constraints:"notnull"`
 	Credentials string       `json:"-" db:"credentials" constraints:"notnull" store.encrypt:"aes" load.decrypt:"aes"`
-	ID          int64        `json:"id" db:"id" constraints:"primarykey"`
-	TenantID    int64        `json:"tenant_id" db:"tenant_id" constraints:"notnull"`
+	ID          string       `json:"id" db:"id" constraints:"primarykey"`
+	TenantID    string       `json:"tenant_id" db:"tenant_id" constraints:"notnull"`
 	Active      bool         `json:"active" db:"active" constraints:"notnull" default:"true"`
 }
 
 // BeforeSave encrypts sensitive fields before persistence.
 func (p *Provider) BeforeSave(ctx context.Context) error {
-	b := sum.MustUse[*sum.Boundary[Provider]](ctx)
+	b := sum.MustUse[sum.Boundary[Provider]](ctx)
 	stored, err := b.Store(ctx, *p)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (p *Provider) BeforeSave(ctx context.Context) error {
 
 // AfterLoad decrypts sensitive fields after loading.
 func (p *Provider) AfterLoad(ctx context.Context) error {
-	b := sum.MustUse[*sum.Boundary[Provider]](ctx)
+	b := sum.MustUse[sum.Boundary[Provider]](ctx)
 	loaded, err := b.Load(ctx, *p)
 	if err != nil {
 		return err
@@ -55,8 +55,13 @@ func (p *Provider) AfterLoad(ctx context.Context) error {
 }
 
 // GetID returns the provider's primary key.
-func (p Provider) GetID() int64 {
+func (p Provider) GetID() string {
 	return p.ID
+}
+
+// GetCreatedAt returns the provider's creation timestamp.
+func (p Provider) GetCreatedAt() time.Time {
+	return p.CreatedAt
 }
 
 // Clone returns a deep copy of the provider.

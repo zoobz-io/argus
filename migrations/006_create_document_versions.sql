@@ -1,10 +1,9 @@
 -- +goose Up
 CREATE TABLE document_versions (
-    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     version_number INT NOT NULL,
-    object_key TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     extraction_status TEXT NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()

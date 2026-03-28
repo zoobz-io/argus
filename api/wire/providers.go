@@ -12,13 +12,13 @@ import (
 type ProviderResponse struct {
 	Type   models.ProviderType `json:"type" description:"Provider type" example:"google_drive"`
 	Name   string              `json:"name" description:"Provider name" example:"My Google Drive"`
-	ID     int64               `json:"id" description:"Provider ID" example:"1"`
+	ID     string              `json:"id" description:"Provider ID" example:"550e8400-e29b-41d4-a716-446655440000"`
 	Active bool                `json:"active" description:"Whether the provider is active"`
 }
 
 // OnSend applies boundary masking before the response is marshaled.
 func (p *ProviderResponse) OnSend(ctx context.Context) error {
-	b := sum.MustUse[*sum.Boundary[ProviderResponse]](ctx)
+	b := sum.MustUse[sum.Boundary[ProviderResponse]](ctx)
 	masked, err := b.Send(ctx, *p)
 	if err != nil {
 		return err

@@ -10,23 +10,20 @@ import (
 
 var listAllDocumentVersions = rocco.GET[rocco.NoBody, wire.AdminDocumentVersionListResponse]("/document-versions", func(r *rocco.Request[rocco.NoBody]) (wire.AdminDocumentVersionListResponse, error) {
 	store := sum.MustUse[contracts.DocumentVersions](r)
-	page := cursorPageFromQuery(r.Params)
+	page := offsetPageFromQuery(r.Params)
 	result, err := store.ListDocumentVersions(r, page)
 	if err != nil {
 		return wire.AdminDocumentVersionListResponse{}, err
 	}
-	return transformers.DocumentVersionsToAdminList(result, page.PageSize()), nil
+	return transformers.DocumentVersionsToAdminList(result), nil
 }).
 	WithSummary("List all document versions").
 	WithTags("document-versions").
-	WithQueryParams("cursor", "limit").
+	WithQueryParams("offset", "limit").
 	WithAuthentication()
 
 var getAdminDocumentVersion = rocco.GET[rocco.NoBody, wire.AdminDocumentVersionResponse]("/document-versions/{id}", func(r *rocco.Request[rocco.NoBody]) (wire.AdminDocumentVersionResponse, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return wire.AdminDocumentVersionResponse{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.DocumentVersions](r)
 	version, err := store.GetDocumentVersion(r, id)
 	if err != nil {
@@ -41,10 +38,7 @@ var getAdminDocumentVersion = rocco.GET[rocco.NoBody, wire.AdminDocumentVersionR
 	WithErrors(ErrVersionNotFound)
 
 var deleteAdminDocumentVersion = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/document-versions/{id}", func(r *rocco.Request[rocco.NoBody]) (rocco.NoBody, error) {
-	id, err := pathID(r.Params, "id")
-	if err != nil {
-		return rocco.NoBody{}, rocco.ErrBadRequest.WithMessage("invalid id")
-	}
+	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.DocumentVersions](r)
 	if err := store.DeleteDocumentVersion(r, id); err != nil {
 		return rocco.NoBody{}, ErrVersionNotFound

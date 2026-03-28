@@ -25,12 +25,12 @@ var (
 	FetchID         = pipz.NewIdentity("extract-fetch", "Fetch raw bytes from object storage")
 	ExtractRouterID = pipz.NewIdentity("extract-router", "Route to format-specific extractor by MIME type")
 	ExtractSignalID = pipz.NewIdentity("extract-signal", "Emit extraction completed signal")
-	SummarizeID     = pipz.NewIdentity("summarize", "Summarize extracted content via LLM")
+	AnalyzeID       = pipz.NewIdentity("analyze", "Analyze content: summarize, classify topics/tags, detect language")
 	EmbedID         = pipz.NewIdentity("embed", "Generate embedding vector for content")
 	IndexID         = pipz.NewIdentity("index", "Index document version in search")
 )
 
-// Pipeline orchestrates document ingestion through extraction, summarization,
+// Pipeline orchestrates document ingestion through extraction, analysis,
 // embedding, and indexing stages.
 type Pipeline struct {
 	sequence *pipz.Sequence[*DocumentContext]
@@ -41,7 +41,8 @@ func New() *Pipeline {
 	seq := pipz.NewSequence(
 		PipelineID,
 		newExtractStage(),
-		newSummarizeStage(),
+		newClassifyStage(),
+		newAnalyzeStage(),
 		newEmbedStage(),
 		newIndexStage(),
 	)
@@ -50,9 +51,10 @@ func New() *Pipeline {
 }
 
 // Ingest processes a document version through the full ingestion pipeline.
-func (p *Pipeline) Ingest(ctx context.Context, versionID int64) error {
+func (p *Pipeline) Ingest(ctx context.Context, versionID string) error {
 	versions := sum.MustUse[intcontracts.IngestVersions](ctx)
 	documents := sum.MustUse[intcontracts.IngestDocuments](ctx)
+	jobs := sum.MustUse[intcontracts.IngestJobs](ctx)
 
 	version, err := versions.GetDocumentVersion(ctx, versionID)
 	if err != nil {
@@ -64,26 +66,36 @@ func (p *Pipeline) Ingest(ctx context.Context, versionID int64) error {
 		return fmt.Errorf("fetching document: %w", err)
 	}
 
-	if statusErr := versions.UpdateExtractionStatus(ctx, versionID, models.ExtractionProcessing); statusErr != nil {
-		return fmt.Errorf("setting status to processing: %w", statusErr)
+	job, err := jobs.CreateJob(ctx, version.ID, version.DocumentID, version.TenantID)
+	if err != nil {
+		return fmt.Errorf("creating job: %w", err)
+	}
+
+	if statusErr := jobs.UpdateJobStatus(ctx, job.ID, models.JobProcessing, nil); statusErr != nil {
+		return fmt.Errorf("setting job to processing: %w", statusErr)
 	}
 
 	capitan.Info(ctx, events.IngestStarted,
 		events.IngestVersionIDKey.Field(version.ID),
 		events.IngestDocumentIDKey.Field(version.DocumentID),
+		events.IngestTenantIDKey.Field(version.TenantID),
 		events.IngestMimeTypeKey.Field(document.MimeType),
 	)
 
 	dc := &DocumentContext{
 		Version:  version,
 		Document: document,
+		Job:      job,
 	}
 
 	_, err = p.sequence.Process(ctx, dc)
 	if err != nil {
-		_ = versions.UpdateExtractionStatus(ctx, versionID, models.ExtractionFailed)
+		errMsg := err.Error()
+		_ = jobs.UpdateJobStatus(ctx, job.ID, models.JobFailed, &errMsg)
 		capitan.Error(ctx, events.IngestFailed,
 			events.IngestVersionIDKey.Field(version.ID),
+			events.IngestDocumentIDKey.Field(version.DocumentID),
+			events.IngestTenantIDKey.Field(version.TenantID),
 			events.IngestErrorKey.Field(err),
 		)
 		return fmt.Errorf("pipeline failed: %w", err)
@@ -92,6 +104,7 @@ func (p *Pipeline) Ingest(ctx context.Context, versionID int64) error {
 	capitan.Info(ctx, events.IngestCompleted,
 		events.IngestVersionIDKey.Field(version.ID),
 		events.IngestDocumentIDKey.Field(version.DocumentID),
+		events.IngestTenantIDKey.Field(version.TenantID),
 	)
 	return nil
 }

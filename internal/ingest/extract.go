@@ -31,9 +31,9 @@ func newExtractStage() pipz.Chainable[*DocumentContext] {
 		FetchID,
 		func(ctx context.Context, dc *DocumentContext) (*DocumentContext, error) {
 			versions := sum.MustUse[intcontracts.IngestVersions](ctx)
-			data, err := versions.GetVersionContent(ctx, dc.Version.ObjectKey)
+			data, err := versions.GetVersionContent(ctx, dc.Document.ObjectKey)
 			if err != nil {
-				return dc, fmt.Errorf("fetching object %s: %w", dc.Version.ObjectKey, err)
+				return dc, fmt.Errorf("fetching object %s: %w", dc.Document.ObjectKey, err)
 			}
 			dc.RawBytes = data
 			return dc, nil
@@ -59,17 +59,17 @@ func newExtractStage() pipz.Chainable[*DocumentContext] {
 		))
 	}
 
-	// PDF → OCR.
+	// PDF → text extraction with OCR fallback.
 	router.AddRoute(extract.MimePDF, extractRoute(
-		pipz.NewIdentity("extract-pdf", "PDF text extraction"),
+		pipz.NewIdentity("extract-pdf", "PDF text extraction with OCR fallback"),
 		extract.PDF,
 	))
 
-	// Legacy Office → OCR.
+	// Legacy Office → Convert (LibreOffice) → OOXML extractor.
 	for _, mime := range []string{extract.MimeDOC, extract.MimeXLS, extract.MimePPT} {
 		router.AddRoute(mime, extractRoute(
-			pipz.NewIdentity("extract-"+mime, "Legacy extraction for "+mime),
-			extract.Legacy(mime),
+			pipz.NewIdentity("extract-"+mime, "Convert and extract for "+mime),
+			extract.Convert(mime),
 		))
 	}
 
@@ -81,18 +81,39 @@ func newExtractStage() pipz.Chainable[*DocumentContext] {
 		))
 	}
 
-	// Document formats → LLM extraction (pre-process + transform synapse).
-	llmExtractor := extract.LLM()
-	for _, mime := range []string{
-		extract.MimeRTF,
-		extract.MimeDOCX, extract.MimeXLSX, extract.MimePPTX,
-		extract.MimeODT, extract.MimeODS, extract.MimeODP,
-	} {
-		router.AddRoute(mime, extractRoute(
-			pipz.NewIdentity("extract-"+mime, "LLM extraction for "+mime),
-			llmExtractor,
-		))
-	}
+	// Office Open XML → format-specific parsers.
+	router.AddRoute(extract.MimeDOCX, extractRoute(
+		pipz.NewIdentity("extract-docx", "DOCX text extraction"),
+		extract.DOCX,
+	))
+	router.AddRoute(extract.MimeXLSX, extractRoute(
+		pipz.NewIdentity("extract-xlsx", "XLSX text extraction"),
+		extract.XLSX,
+	))
+	router.AddRoute(extract.MimePPTX, extractRoute(
+		pipz.NewIdentity("extract-pptx", "PPTX text extraction"),
+		extract.PPTX,
+	))
+
+	// OpenDocument → format-specific parsers.
+	router.AddRoute(extract.MimeODT, extractRoute(
+		pipz.NewIdentity("extract-odt", "ODT text extraction"),
+		extract.ODT,
+	))
+	router.AddRoute(extract.MimeODS, extractRoute(
+		pipz.NewIdentity("extract-ods", "ODS text extraction"),
+		extract.ODS,
+	))
+	router.AddRoute(extract.MimeODP, extractRoute(
+		pipz.NewIdentity("extract-odp", "ODP text extraction"),
+		extract.ODP,
+	))
+
+	// RTF → control code stripping.
+	router.AddRoute(extract.MimeRTF, extractRoute(
+		pipz.NewIdentity("extract-rtf", "RTF text extraction"),
+		extract.RTF,
+	))
 
 	// Emit signal after extraction.
 	signal := pipz.Effect(

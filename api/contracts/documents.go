@@ -9,7 +9,7 @@ import (
 // Documents defines the contract for document operations on the public API surface.
 type Documents interface {
 	// GetDocument retrieves a document by ID.
-	GetDocument(ctx context.Context, id int64) (*models.Document, error)
+	GetDocument(ctx context.Context, id string) (*models.Document, error)
 	// ListDocumentsByTenant retrieves documents for a tenant using cursor pagination.
-	ListDocumentsByTenant(ctx context.Context, tenantID int64, page models.CursorPage) (*models.CursorResult[models.Document], error)
+	ListDocumentsByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Document], error)
 }

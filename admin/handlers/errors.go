@@ -9,4 +9,6 @@ var (
 	ErrWatchedPathNotFound = rocco.ErrNotFound.WithMessage("watched path not found")
 	ErrDocumentNotFound    = rocco.ErrNotFound.WithMessage("document not found")
 	ErrVersionNotFound     = rocco.ErrNotFound.WithMessage("document version not found")
+	ErrTopicNotFound       = rocco.ErrNotFound.WithMessage("topic not found")
+	ErrTagNotFound         = rocco.ErrNotFound.WithMessage("tag not found")
 )

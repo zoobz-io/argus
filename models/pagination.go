@@ -6,14 +6,14 @@ const DefaultPageSize = 20
 // MaxPageSize is the maximum allowed page size.
 const MaxPageSize = 100
 
-// CursorPage holds cursor-based pagination parameters for store queries.
-type CursorPage struct {
-	Cursor *int64
+// OffsetPage holds offset-based pagination parameters for store queries.
+type OffsetPage struct {
+	Offset int
 	Limit  int
 }
 
 // PageSize returns the effective page size, clamped to bounds.
-func (p CursorPage) PageSize() int {
+func (p OffsetPage) PageSize() int {
 	if p.Limit <= 0 {
 		return DefaultPageSize
 	}
@@ -23,9 +23,9 @@ func (p CursorPage) PageSize() int {
 	return p.Limit
 }
 
-// CursorResult holds cursor-based pagination metadata alongside results.
-type CursorResult[T any] struct {
-	Cursor  *int64
-	Items   []*T
-	HasMore bool
+// OffsetResult holds offset-based pagination metadata alongside results.
+type OffsetResult[T any] struct {
+	Items  []*T
+	Total  int64
+	Offset int
 }

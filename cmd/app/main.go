@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -14,8 +15,11 @@ import (
 	"github.com/opensearch-project/opensearch-go/v4"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/zoobz-io/aperture"
+	"github.com/zoobz-io/herald"
+	heraldredis "github.com/zoobz-io/herald/redis"
 	astqlpg "github.com/zoobz-io/astql/postgres"
 	"github.com/zoobz-io/capitan"
+	"github.com/zoobz-io/cereal"
 	grubminio "github.com/zoobz-io/grub/minio"
 	grubopensearch "github.com/zoobz-io/grub/opensearch"
 	grubredis "github.com/zoobz-io/grub/redis"
@@ -38,6 +42,7 @@ import (
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/ingest"
 	intotel "github.com/zoobz-io/argus/internal/otel"
+	"github.com/zoobz-io/argus/internal/vocabulary"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/proto"
 	"github.com/zoobz-io/argus/stores"
@@ -81,8 +86,11 @@ func run() error {
 	if err := sum.Config[config.OCR](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load ocr config: %w", err)
 	}
-	if err := sum.Config[config.Encryption](ctx, k, nil); err != nil {
-		return fmt.Errorf("failed to load encryption config: %w", err)
+	if err := sum.Config[config.Convert](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load convert config: %w", err)
+	}
+	if err := sum.Config[config.Classify](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load classify config: %w", err)
 	}
 	if err := sum.Config[config.LLM](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load llm config: %w", err)
@@ -90,6 +98,19 @@ func run() error {
 	if err := sum.Config[config.Embedding](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load embedding config: %w", err)
 	}
+	if err := sum.Config[config.Encryption](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load encryption config: %w", err)
+	}
+	encCfg := sum.MustUse[config.Encryption](ctx)
+	encKey, err := hex.DecodeString(encCfg.Key)
+	if err != nil {
+		return fmt.Errorf("failed to decode encryption key: %w", err)
+	}
+	aesEncryptor, err := cereal.AES(encKey)
+	if err != nil {
+		return fmt.Errorf("failed to create AES encryptor: %w", err)
+	}
+	svc.WithEncryptor(cereal.EncryptAES, aesEncryptor)
 
 	// =========================================================================
 	// 2. Connect to Infrastructure
@@ -159,6 +180,26 @@ func run() error {
 	log.Println("ocr service connected")
 	capitan.Emit(ctx, events.StartupOCRConnected)
 
+	// Convert (gRPC)
+	convertCfg := sum.MustUse[config.Convert](ctx)
+	convertConn, err := grpc.NewClient(convertCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("failed to connect to convert service: %w", err)
+	}
+	defer func() { _ = convertConn.Close() }()
+	convertClient := proto.NewConvertServiceClient(convertConn)
+	log.Println("convert service connected")
+
+	// Classify (gRPC)
+	classifyCfg := sum.MustUse[config.Classify](ctx)
+	classifyConn, err := grpc.NewClient(classifyCfg.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("failed to connect to classify service: %w", err)
+	}
+	defer func() { _ = classifyConn.Close() }()
+	classifyClient := proto.NewClassifyServiceClient(classifyConn)
+	log.Println("classify service connected")
+
 	// LLM (zyn)
 	llmCfg := sum.MustUse[config.LLM](ctx)
 	llmProvider := zynopenai.New(zynopenai.Config{
@@ -166,27 +207,17 @@ func run() error {
 		Model:   llmCfg.Model,
 		BaseURL: llmCfg.BaseURL,
 	})
-	summarySynapse, err := zyn.Transform(
-		"Summarize the following document content into a concise paragraph that captures the key points and themes.",
+	analyzerSynapse, err := zyn.Extract[models.DocumentAnalysis](
+		"Analyze the document content and extract: a concise summary paragraph, the ISO 639-1 language code, and any matching topics and tags from the provided vocabulary lists. Only select topics and tags that clearly apply to the content.",
 		llmProvider,
 		zyn.WithRetry(3),
 		zyn.WithTimeout(60*time.Second),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create summary synapse: %w", err)
+		return fmt.Errorf("failed to create analyzer synapse: %w", err)
 	}
-	summarizer := ingest.NewSynapseSummarizer(summarySynapse)
+	analyzer := ingest.NewSynapseAnalyzer(analyzerSynapse)
 
-	extractionSynapse, err := zyn.Transform(
-		"Extract and return the readable text content from the following raw document data. Preserve structure (paragraphs, headings, lists, tables) as plain text. Remove markup, control codes, and formatting artifacts.",
-		llmProvider,
-		zyn.WithRetry(3),
-		zyn.WithTimeout(60*time.Second),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create extraction synapse: %w", err)
-	}
-	textExtractor := ingest.NewSynapseExtractor(extractionSynapse)
 	log.Println("llm provider initialized")
 
 	// Embeddings (vex)
@@ -209,10 +240,7 @@ func run() error {
 
 	renderer := astqlpg.New()
 
-	allStores, err := stores.New(db, renderer, bucketProvider, searchProvider)
-	if err != nil {
-		return fmt.Errorf("failed to create stores: %w", err)
-	}
+	allStores := stores.New(db, renderer, bucketProvider, searchProvider)
 
 	// Public API contracts
 	sum.Register[apicontracts.Tenants](k, allStores.Tenants)
@@ -221,6 +249,9 @@ func run() error {
 	sum.Register[apicontracts.Documents](k, allStores.Documents)
 	sum.Register[apicontracts.DocumentVersions](k, allStores.DocumentVersions)
 	sum.Register[apicontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
+	sum.Register[apicontracts.QueryEmbedder](k, embedService)
+	sum.Register[apicontracts.Topics](k, allStores.Topics)
+	sum.Register[apicontracts.Tags](k, allStores.Tags)
 
 	// Admin API contracts
 	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
@@ -229,51 +260,43 @@ func run() error {
 	sum.Register[admincontracts.Documents](k, allStores.Documents)
 	sum.Register[admincontracts.DocumentVersions](k, allStores.DocumentVersions)
 	sum.Register[admincontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
+	sum.Register[admincontracts.Topics](k, allStores.Topics)
+	sum.Register[admincontracts.Tags](k, allStores.Tags)
 
 	// Internal contracts (ingestion pipeline)
 	sum.Register[intcontracts.IngestVersions](k, allStores.DocumentVersions)
 	sum.Register[intcontracts.IngestDocuments](k, allStores.Documents)
 	sum.Register[intcontracts.IngestSearch](k, allStores.DocumentVersionSearch)
+	sum.Register[intcontracts.IngestJobs](k, allStores.Jobs)
+	sum.Register[intcontracts.IngestTopics](k, allStores.Topics)
+	sum.Register[intcontracts.IngestTags](k, allStores.Tags)
 	sum.Register[intcontracts.OCR](k, ocrClient)
-	sum.Register[intcontracts.Summarizer](k, summarizer)
-	sum.Register[intcontracts.TextExtractor](k, textExtractor)
+	sum.Register[intcontracts.Converter](k, convertClient)
+	sum.Register[intcontracts.Classifier](k, classifyClient)
+	sum.Register[intcontracts.Analyzer](k, analyzer)
 	sum.Register[intcontracts.Embedder](k, embedService)
 
-	// Pipeline contract (public API)
+	// Pipeline contracts
 	pipeline := ingest.New()
 	sum.Register[apicontracts.Ingest](k, pipeline)
+
+	vocabPipeline := vocabulary.New()
+	sum.Register[apicontracts.Vocabulary](k, vocabPipeline)
+	sum.Register[admincontracts.Vocabulary](k, vocabPipeline)
 
 	// =========================================================================
 	// 4. Register Boundaries
 	// =========================================================================
 
 	// Model boundaries
-	_, err = sum.NewBoundary[models.Tenant](k)
-	if err != nil {
-		return fmt.Errorf("failed to create tenant boundary: %w", err)
-	}
-	_, err = sum.NewBoundary[models.Provider](k)
-	if err != nil {
-		return fmt.Errorf("failed to create provider boundary: %w", err)
-	}
-	_, err = sum.NewBoundary[models.WatchedPath](k)
-	if err != nil {
-		return fmt.Errorf("failed to create watched path boundary: %w", err)
-	}
-	_, err = sum.NewBoundary[models.Document](k)
-	if err != nil {
-		return fmt.Errorf("failed to create document boundary: %w", err)
-	}
-	_, err = sum.NewBoundary[models.DocumentVersion](k)
-	if err != nil {
-		return fmt.Errorf("failed to create document version boundary: %w", err)
-	}
+	sum.NewBoundary[models.Tenant](k)
+	sum.NewBoundary[models.Provider](k)
+	sum.NewBoundary[models.WatchedPath](k)
+	sum.NewBoundary[models.Document](k)
+	sum.NewBoundary[models.DocumentVersion](k)
 
 	// Wire boundaries
-	err = wire.RegisterBoundaries(k)
-	if err != nil {
-		return fmt.Errorf("failed to register wire boundaries: %w", err)
-	}
+	wire.RegisterBoundaries(k)
 
 	// =========================================================================
 	// 5. Freeze Registry
@@ -320,7 +343,55 @@ func run() error {
 	capitan.Emit(ctx, events.StartupApertureReady)
 
 	// =========================================================================
-	// 7. Initialize Pipeline and Register Handlers
+	// 7. Notification Hooks + Herald Publisher
+	// =========================================================================
+
+	// Hook domain signals → build normalized notifications.
+	capitan.Hook(events.IngestCompleted, func(ctx context.Context, e *capitan.Event) {
+		versionID, _ := events.IngestVersionIDKey.From(e)
+		documentID, _ := events.IngestDocumentIDKey.From(e)
+		tenantID, _ := events.IngestTenantIDKey.From(e)
+		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
+			TenantID:   tenantID,
+			DocumentID: documentID,
+			VersionID:  versionID,
+			Type:       models.NotificationIngestCompleted,
+			Message:    "Document ingestion completed",
+		}))
+	})
+
+	capitan.Hook(events.IngestFailed, func(ctx context.Context, e *capitan.Event) {
+		versionID, _ := events.IngestVersionIDKey.From(e)
+		documentID, _ := events.IngestDocumentIDKey.From(e)
+		tenantID, _ := events.IngestTenantIDKey.From(e)
+		ingestErr, _ := events.IngestErrorKey.From(e)
+		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
+			TenantID:   tenantID,
+			DocumentID: documentID,
+			VersionID:  versionID,
+			Type:       models.NotificationIngestFailed,
+			Message:    "Document ingestion failed",
+			Error:      ingestErr.Error(),
+		}))
+	})
+
+	// Single publisher for all notifications.
+	notifStream := heraldredis.New("argus:notifications", heraldredis.WithClient(redisClient))
+	notifPub := herald.NewPublisher(
+		notifStream,
+		events.NotificationSignal,
+		events.NotificationKey,
+		[]herald.Option[models.Notification]{
+			herald.WithRetry[models.Notification](3),
+			herald.WithBackoff[models.Notification](3, 500*time.Millisecond),
+		},
+	)
+	notifPub.Start()
+	defer func() { _ = notifPub.Close() }()
+	log.Println("notification hooks and publisher initialized")
+
+	// =========================================================================
+	// 8. Register Handlers and Start Server
 	// =========================================================================
 
 	svc.Handle(handlers.All()...)

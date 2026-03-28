@@ -5,6 +5,7 @@ run:
   tests: true
   build-tags:
     - integration
+    - testing
 
 linters:
   enable:
@@ -43,13 +44,25 @@ linters:
           - govet
       # Admin handlers follow a uniform list/get/delete pattern per entity.
       # The structural similarity is inherent to the rocco handler pattern.
-      - path: admin/handlers/(documents|document_versions|watched_paths)\.go
+      - path: admin/handlers/(documents|document_versions|watched_paths|tags|topics)\.go
+        linters:
+          - dupl
+      # API handlers follow the same uniform pattern.
+      - path: api/handlers/(tags|topics)\.go
         linters:
           - dupl
       # Stores share cursor-pagination boilerplate across entities.
-      - path: stores/(documents|document_versions)\.go
+      - path: stores/(documents|document_versions|tags|topics)\.go
         linters:
           - dupl
+      # Testing package: mock methods implement interfaces and don't need comments.
+      - path: testing/
+        linters:
+          - revive
+      # Test files: unused mock parameters are intentional.
+      - path: _test\.go
+        linters:
+          - revive
 
   settings:
     errcheck:

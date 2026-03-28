@@ -7,19 +7,32 @@ import (
 
 // DocumentContext carries data through the ingestion pipeline stages.
 type DocumentContext struct {
-	Version  *models.DocumentVersion
-	Document *models.Document
-	RawBytes []byte
-	Content  string
-	Summary  string
+	Version   *models.DocumentVersion
+	Document  *models.Document
+	Job       *models.Job
+	Topics    []string
+	Tags      []string
+	RawBytes  []byte
+	Content   string
+	Summary   string
+	Language  string
 	Embedding vex.Vector
 }
 
 // Clone returns a deep copy of the document context for pipz compatibility.
 func (dc *DocumentContext) Clone() *DocumentContext {
 	c := &DocumentContext{
-		Content: dc.Content,
-		Summary: dc.Summary,
+		Content:  dc.Content,
+		Summary:  dc.Summary,
+		Language: dc.Language,
+	}
+	if dc.Topics != nil {
+		c.Topics = make([]string, len(dc.Topics))
+		copy(c.Topics, dc.Topics)
+	}
+	if dc.Tags != nil {
+		c.Tags = make([]string, len(dc.Tags))
+		copy(c.Tags, dc.Tags)
 	}
 	if dc.Version != nil {
 		v := dc.Version.Clone()
@@ -28,6 +41,10 @@ func (dc *DocumentContext) Clone() *DocumentContext {
 	if dc.Document != nil {
 		d := dc.Document.Clone()
 		c.Document = &d
+	}
+	if dc.Job != nil {
+		j := dc.Job.Clone()
+		c.Job = &j
 	}
 	if dc.RawBytes != nil {
 		c.RawBytes = make([]byte, len(dc.RawBytes))

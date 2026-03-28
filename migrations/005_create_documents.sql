@@ -1,10 +1,11 @@
 -- +goose Up
 CREATE TABLE documents (
-    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    provider_id BIGINT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-    watched_path_id BIGINT NOT NULL REFERENCES watched_paths(id) ON DELETE CASCADE,
-    current_version_id BIGINT,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    provider_id UUID NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    watched_path_id UUID NOT NULL REFERENCES watched_paths(id) ON DELETE CASCADE,
+    current_version_id UUID,
+    object_key TEXT NOT NULL,
     external_id TEXT NOT NULL,
     name TEXT NOT NULL,
     mime_type TEXT NOT NULL,

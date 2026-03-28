@@ -21,16 +21,15 @@ func DocumentToAdminResponse(d *models.Document) wire.AdminDocumentResponse {
 	}
 }
 
-// DocumentsToAdminList converts a cursor result of documents to an admin list response.
-func DocumentsToAdminList(result *models.CursorResult[models.Document], limit int) wire.AdminDocumentListResponse {
+// DocumentsToAdminList converts an offset result of documents to an admin list response.
+func DocumentsToAdminList(result *models.OffsetResult[models.Document]) wire.AdminDocumentListResponse {
 	items := make([]wire.AdminDocumentResponse, len(result.Items))
 	for i, d := range result.Items {
 		items[i] = DocumentToAdminResponse(d)
 	}
 	return wire.AdminDocumentListResponse{
 		Documents: items,
-		Cursor:    result.Cursor,
-		Limit:     limit,
-		HasMore:   result.HasMore,
+		Offset:    result.Offset,
+		Total:     result.Total,
 	}
 }
