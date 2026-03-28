@@ -71,7 +71,11 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 		reader := sum.MustUse[contracts.JobReader](r)
 		job, err := reader.GetJobByTenant(r, jobID, tid)
 		if err != nil {
-			return ErrJobNotFound
+			return stream.SendEvent("error", JobStatusSSE{
+				JobID:  jobID,
+				Status: "not_found",
+				Error:  "job not found",
+			})
 		}
 
 		// 3. Send current status as initial event.
