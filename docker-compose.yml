@@ -94,7 +94,7 @@ services:
   # =============================================================================
 
   zitadel:
-    image: ghcr.io/zitadel/zitadel:latest
+    image: ghcr.io/zitadel/zitadel:v3.1.0
     command: start-from-init --masterkey "01234567890123456789012345678901" --tlsMode disabled
     depends_on:
       postgres:

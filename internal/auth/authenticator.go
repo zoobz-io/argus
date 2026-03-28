@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -18,9 +19,10 @@ const zitadelRolesClaim = "urn:zitadel:iam:org:project:roles"
 
 // claims maps the Zitadel-specific JWT claims we extract.
 type claims struct {
-	Email string                       `json:"email"`
-	OrgID string                       `json:"urn:zitadel:iam:user:resourceowner:id"`
-	Roles map[string]map[string]string `json:"urn:zitadel:iam:org:project:roles"`
+	Email  string                       `json:"email"`
+	OrgID  string                       `json:"urn:zitadel:iam:user:resourceowner:id"`
+	Scope  string                       `json:"scope"`
+	Roles  map[string]map[string]string `json:"urn:zitadel:iam:org:project:roles"`
 }
 
 // NewAuthenticator creates a rocco-compatible authenticator function that validates
@@ -61,12 +63,19 @@ func NewAuthenticator(ctx context.Context, issuer, audience string) (func(contex
 		for role := range c.Roles {
 			roles = append(roles, role)
 		}
+		sort.Strings(roles)
+
+		var scopes []string
+		if c.Scope != "" {
+			scopes = strings.Split(c.Scope, " ")
+		}
 
 		return &ZitadelIdentity{
 			sub:      idToken.Subject,
 			tenantID: c.OrgID,
 			email:    c.Email,
 			roles:    roles,
+			scopes:   scopes,
 		}, nil
 	}, nil
 }
