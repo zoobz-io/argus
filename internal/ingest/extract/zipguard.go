@@ -50,25 +50,27 @@ func safeOpen(f *zip.File) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return &guardedReadCloser{
-		rc:    rc,
-		limit: io.LimitReader(rc, MaxEntrySize),
-		name:  f.Name,
+		rc:       rc,
+		limit:    io.LimitReader(rc, MaxEntrySize),
+		name:     f.Name,
+		maxBytes: MaxEntrySize,
 	}, nil
 }
 
 // guardedReadCloser wraps a ReadCloser with a size limit that errors
 // on truncation instead of silently returning partial content.
 type guardedReadCloser struct {
-	rc    io.ReadCloser
-	limit io.Reader
-	name  string
-	total int64
+	rc       io.ReadCloser
+	limit    io.Reader
+	name     string
+	maxBytes int64
+	total    int64
 }
 
 func (g *guardedReadCloser) Read(p []byte) (int, error) {
 	n, err := g.limit.Read(p)
 	g.total += int64(n)
-	if err == io.EOF && g.total >= MaxEntrySize {
+	if err == io.EOF && g.total >= g.maxBytes {
 		// LimitReader returned EOF at the cap — probe for more data.
 		var probe [1]byte
 		if pn, _ := g.rc.Read(probe[:]); pn > 0 {

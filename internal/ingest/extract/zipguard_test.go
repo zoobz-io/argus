@@ -5,6 +5,8 @@ package extract
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -83,6 +85,48 @@ func TestSafeZIPReader_InputTooLarge(t *testing.T) {
 	}
 	if _, err := safeZIPReader(data); err != nil {
 		t.Fatalf("small archive should pass: %v", err)
+	}
+}
+
+func TestGuardedReadCloser_ExceedsLimit(t *testing.T) {
+	// Build a zip with content larger than a small limit.
+	content := strings.Repeat("x", 1024)
+	data := makeZIP(t, map[string]string{"big.txt": content})
+	r, err := safeZIPReader(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	rc, err := r.File[0].Open()
+	if err != nil {
+		t.Fatalf("open error: %v", err)
+	}
+
+	// Wrap with a small limit (100 bytes) to trigger truncation detection.
+	smallLimit := int64(100)
+	guarded := &guardedReadCloser{
+		rc:       rc,
+		limit:    io.LimitReader(rc, smallLimit),
+		name:     "big.txt",
+		maxBytes: smallLimit,
+	}
+	// Read all — should error when limit is hit and more data exists.
+	buf := make([]byte, 4096)
+	var totalRead int64
+	var readErr error
+	for {
+		n, err := guarded.Read(buf)
+		totalRead += int64(n)
+		if err != nil {
+			readErr = err
+			break
+		}
+	}
+	if readErr == nil || errors.Is(readErr, io.EOF) {
+		t.Fatal("expected size exceeded error, got nil or EOF")
+	}
+	if !strings.Contains(readErr.Error(), "exceeds maximum decompressed size") {
+		t.Errorf("error should mention size exceeded, got %q", readErr.Error())
 	}
 }
 
