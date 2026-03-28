@@ -320,6 +320,22 @@ func TestList_EmptyPath(t *testing.T) {
 	}
 }
 
+func TestList_InvalidFolderID(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, err := g.List(context.Background(), validCreds(), "folder'--injection")
+	if err == nil {
+		t.Fatal("expected error for invalid folder ID")
+	}
+	if !strings.Contains(err.Error(), "invalid folder ID") {
+		t.Errorf("error should mention invalid folder ID, got %q", err.Error())
+	}
+}
+
 func TestChanges_InitialSync(t *testing.T) {
 	server := fakeServer(t, map[string]http.HandlerFunc{
 		"/token":                  tokenHandler(),

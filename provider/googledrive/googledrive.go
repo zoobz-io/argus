@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,6 +22,9 @@ import (
 )
 
 const providerType = "google_drive"
+
+// validFolderID matches Google Drive file/folder IDs.
+var validFolderID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // Config holds Google OAuth2 application credentials.
 // These are per-application, not per-tenant.
@@ -66,14 +70,16 @@ func (g *GoogleDrive) Type() string {
 
 // AuthURL returns the Google OAuth2 authorization URL.
 func (g *GoogleDrive) AuthURL(_ context.Context, redirectURI, state string) (string, error) {
-	g.oauth.RedirectURL = redirectURI
-	return g.oauth.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce), nil
+	cfg := *g.oauth
+	cfg.RedirectURL = redirectURI
+	return cfg.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce), nil
 }
 
 // Exchange trades an authorization code for credentials.
 func (g *GoogleDrive) Exchange(ctx context.Context, code, redirectURI string) (*provider.Credentials, error) {
-	g.oauth.RedirectURL = redirectURI
-	token, err := g.oauth.Exchange(ctx, code)
+	cfg := *g.oauth
+	cfg.RedirectURL = redirectURI
+	token, err := cfg.Exchange(ctx, code)
 	if err != nil {
 		return nil, fmt.Errorf("exchanging auth code: %w", err)
 	}
@@ -91,6 +97,9 @@ func (g *GoogleDrive) List(ctx context.Context, creds *provider.Credentials, pat
 	folderID := path
 	if folderID == "" {
 		folderID = "root"
+	}
+	if !validFolderID.MatchString(folderID) {
+		return nil, nil, fmt.Errorf("invalid folder ID: %s", folderID)
 	}
 
 	query := fmt.Sprintf("'%s' in parents and trashed = false", folderID)
@@ -276,6 +285,10 @@ func fileToEntry(f *drive.File) provider.Entry {
 // changeToProviderChange converts a Google Drive Change to a provider.Change.
 // Returns nil if the change is not relevant to the given path (folder ID).
 // Pass empty path to include all changes.
+//
+// NOTE: Parent filtering is shallow — only checks immediate parents.
+// Files in subfolders of a watched path are not detected. Recursive
+// watch would require maintaining a folder tree per watched path.
 func changeToProviderChange(c *drive.Change, path string) *provider.Change {
 	if c.Removed {
 		return &provider.Change{
