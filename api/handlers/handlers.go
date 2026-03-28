@@ -38,5 +38,8 @@ func All() []rocco.Endpoint {
 		triggerIngest,
 		// Job Status
 		jobStatusStream,
+		// Users
+		listUsersInTenant,
+		getMyProfile,
 	}
 }

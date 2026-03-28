@@ -230,7 +230,7 @@ func TestNewAuthenticator_Success(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	authFn, err := NewAuthenticator(ctx, srv.URL, "")
+	authFn, err := NewAuthenticator(ctx, srv.URL, "", nil)
 	if err != nil {
 		t.Fatalf("NewAuthenticator failed: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestNewAuthenticator_MissingToken(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	authFn, err := NewAuthenticator(ctx, srv.URL, "")
+	authFn, err := NewAuthenticator(ctx, srv.URL, "", nil)
 	if err != nil {
 		t.Fatalf("NewAuthenticator failed: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestNewAuthenticator_InvalidToken(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	authFn, err := NewAuthenticator(ctx, srv.URL, "")
+	authFn, err := NewAuthenticator(ctx, srv.URL, "", nil)
 	if err != nil {
 		t.Fatalf("NewAuthenticator failed: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestNewAuthenticator_ExpiredToken(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	authFn, err := NewAuthenticator(ctx, srv.URL, "")
+	authFn, err := NewAuthenticator(ctx, srv.URL, "", nil)
 	if err != nil {
 		t.Fatalf("NewAuthenticator failed: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestNewAuthenticator_ExpiredToken(t *testing.T) {
 
 func TestNewAuthenticator_InvalidIssuer(t *testing.T) {
 	ctx := context.Background()
-	_, err := NewAuthenticator(ctx, "http://localhost:1/nonexistent", "")
+	_, err := NewAuthenticator(ctx, "http://localhost:1/nonexistent", "", nil)
 	if err == nil {
 		t.Error("expected error for invalid issuer")
 	}
@@ -348,7 +348,7 @@ func TestNewAuthenticator_WithAudience(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	authFn, err := NewAuthenticator(ctx, srv.URL, "my-app")
+	authFn, err := NewAuthenticator(ctx, srv.URL, "my-app", nil)
 	if err != nil {
 		t.Fatalf("NewAuthenticator failed: %v", err)
 	}
