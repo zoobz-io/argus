@@ -53,6 +53,8 @@ func setupFailRegistry(t *testing.T) context.Context {
 	sum.Register[sum.Boundary[TopicListResponse]](k, &failBoundary[TopicListResponse]{err: sendErr})
 	sum.Register[sum.Boundary[TagResponse]](k, &failBoundary[TagResponse]{err: sendErr})
 	sum.Register[sum.Boundary[TagListResponse]](k, &failBoundary[TagListResponse]{err: sendErr})
+	sum.Register[sum.Boundary[UserResponse]](k, &failBoundary[UserResponse]{err: sendErr})
+	sum.Register[sum.Boundary[UserListResponse]](k, &failBoundary[UserListResponse]{err: sendErr})
 
 	sum.Freeze(k)
 	t.Cleanup(sum.Reset)

@@ -130,16 +130,8 @@ func run() error {
 	}
 	defer func() { _ = classifyConn.Close() }()
 
-	// Authentication (OIDC)
+	// Authentication (OIDC) — upserter wired after stores are created (section 3).
 	authCfg := sum.MustUse[config.Auth](ctx)
-	authenticator, err := auth.NewAuthenticator(ctx, authCfg.Issuer, authCfg.Audience)
-	if err != nil {
-		return fmt.Errorf("failed to create oidc authenticator: %w", err)
-	}
-	svc.Engine().WithAuthenticator(authenticator)
-	log.Println("oidc authenticator initialized")
-	capitan.Emit(ctx, events.StartupAuthReady)
-
 	embedService, err := boot.Embedding(ctx)
 	if err != nil {
 		return err
@@ -163,6 +155,7 @@ func run() error {
 	sum.Register[apicontracts.Topics](k, allStores.Topics)
 	sum.Register[apicontracts.Tags](k, allStores.Tags)
 	sum.Register[apicontracts.JobReader](k, allStores.Jobs)
+	sum.Register[apicontracts.Users](k, allStores.Users)
 
 	// Admin API contracts
 	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
@@ -173,6 +166,7 @@ func run() error {
 	sum.Register[admincontracts.DocumentVersionSearch](k, allStores.DocumentVersionSearch)
 	sum.Register[admincontracts.Topics](k, allStores.Topics)
 	sum.Register[admincontracts.Tags](k, allStores.Tags)
+	sum.Register[admincontracts.Users](k, allStores.Users)
 
 	// Internal contracts — enqueuer needs versions, documents, jobs.
 	// Classifier needed by vocabulary pipeline.
@@ -189,6 +183,15 @@ func run() error {
 	sum.Register[apicontracts.Vocabulary](k, vocabPipeline)
 	sum.Register[admincontracts.Vocabulary](k, vocabPipeline)
 
+	// Authentication (OIDC) — now that stores exist, wire the user upserter.
+	authenticator, err := auth.NewAuthenticator(ctx, authCfg.Issuer, authCfg.Audience, &userUpserterAdapter{store: allStores.Users})
+	if err != nil {
+		return fmt.Errorf("failed to create oidc authenticator: %w", err)
+	}
+	svc.Engine().WithAuthenticator(authenticator)
+	log.Println("oidc authenticator initialized")
+	capitan.Emit(ctx, events.StartupAuthReady)
+
 	// =========================================================================
 	// 4. Register Boundaries
 	// =========================================================================
@@ -198,6 +201,7 @@ func run() error {
 	sum.NewBoundary[models.WatchedPath](k)
 	sum.NewBoundary[models.Document](k)
 	sum.NewBoundary[models.DocumentVersion](k)
+	sum.NewBoundary[models.User](k)
 	wire.RegisterBoundaries(k)
 
 	// =========================================================================
@@ -272,4 +276,16 @@ func run() error {
 	_ = ap // Remove when using ap.Apply() above.
 
 	return svc.Run("", appCfg.Port)
+}
+
+// userUpserterAdapter adapts the Users store to the auth.UserUpserter interface.
+type userUpserterAdapter struct {
+	store interface {
+		UpsertFromClaims(ctx context.Context, externalID, tenantID, email, displayName string) (*models.User, error)
+	}
+}
+
+func (a *userUpserterAdapter) UpsertFromClaims(ctx context.Context, externalID, tenantID, email, displayName string) error {
+	_, err := a.store.UpsertFromClaims(ctx, externalID, tenantID, email, displayName)
+	return err
 }

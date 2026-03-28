@@ -39,5 +39,11 @@ func All() []rocco.Endpoint {
 		getAdminTag,
 		createAdminTag,
 		deleteAdminTag,
+		// Users
+		listUsers,
+		getUser,
+		createUser,
+		updateUser,
+		deleteUser,
 	}
 }

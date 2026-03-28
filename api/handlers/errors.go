@@ -13,4 +13,5 @@ var (
 	ErrTopicNotFound   = rocco.ErrNotFound.WithMessage("topic not found")
 	ErrTagNotFound     = rocco.ErrNotFound.WithMessage("tag not found")
 	ErrJobNotFound     = rocco.ErrNotFound.WithMessage("job not found")
+	ErrUserNotFound    = rocco.ErrNotFound.WithMessage("user not found")
 )

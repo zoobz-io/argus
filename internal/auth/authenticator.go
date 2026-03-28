@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -11,10 +12,16 @@ import (
 	"github.com/zoobz-io/rocco"
 )
 
+// UserUpserter lazily creates or touches a user record from JWT claims.
+type UserUpserter interface {
+	UpsertFromClaims(ctx context.Context, externalID, tenantID, email, displayName string) error
+}
+
 // claims maps the Zitadel-specific JWT claims we extract.
 type claims struct {
 	Roles map[string]map[string]string `json:"urn:zitadel:iam:org:project:roles"`
 	Email string                       `json:"email"`
+	Name  string                       `json:"name"`
 	OrgID string                       `json:"urn:zitadel:iam:user:resourceowner:id"`
 	Scope string                       `json:"scope"`
 }
@@ -22,7 +29,7 @@ type claims struct {
 // NewAuthenticator creates a rocco-compatible authenticator function that validates
 // OIDC JWTs issued by the given issuer. If audience is empty, audience verification
 // is skipped (useful for development).
-func NewAuthenticator(ctx context.Context, issuer, audience string) (func(context.Context, *http.Request) (rocco.Identity, error), error) {
+func NewAuthenticator(ctx context.Context, issuer, audience string, upserter UserUpserter) (func(context.Context, *http.Request) (rocco.Identity, error), error) {
 	provider, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery failed for %s: %w", issuer, err)
@@ -53,7 +60,22 @@ func NewAuthenticator(ctx context.Context, issuer, audience string) (func(contex
 			return nil, fmt.Errorf("failed to parse claims: %w", err)
 		}
 
-		return identityFromClaims(idToken.Subject, &c), nil
+		identity := identityFromClaims(idToken.Subject, &c)
+
+		if upserter != nil {
+			go func() {
+				bgCtx := context.WithoutCancel(ctx)
+				displayName := c.Name
+				if displayName == "" {
+					displayName = c.Email
+				}
+				if err := upserter.UpsertFromClaims(bgCtx, identity.sub, identity.tenantID, identity.email, displayName); err != nil {
+					log.Printf("user upsert failed (non-blocking): %v", err)
+				}
+			}()
+		}
+
+		return identity, nil
 	}, nil
 }
 

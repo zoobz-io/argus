@@ -61,6 +61,9 @@ func WithAPIQueryEmbedder(m *MockQueryEmbedder) RegistryOption {
 func WithAPIVocabulary(m *MockVocabulary) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.Vocabulary](k, m) }
 }
+func WithAPIUsers(m *MockUsers) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Users](k, m) }
+}
 
 // Admin contract options.
 
@@ -87,6 +90,9 @@ func WithAdminTags(m *MockTags) RegistryOption {
 }
 func WithAdminVocabulary(m *MockVocabulary) RegistryOption {
 	return func(k sum.Key) { sum.Register[admincontracts.Vocabulary](k, m) }
+}
+func WithAdminUsers(m *MockUsers) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Users](k, m) }
 }
 
 // Internal contract options.
@@ -130,6 +136,7 @@ func SetupRegistry(t *testing.T, opts ...RegistryOption) context.Context {
 	sum.NewBoundary[models.WatchedPath](k)
 	sum.NewBoundary[models.Document](k)
 	sum.NewBoundary[models.DocumentVersion](k)
+	sum.NewBoundary[models.User](k)
 
 	sum.Freeze(k)
 	t.Cleanup(sum.Reset)

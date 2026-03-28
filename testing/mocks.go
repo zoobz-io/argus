@@ -32,6 +32,8 @@ var (
 	_ apicontracts.Topics                 = (*MockTopics)(nil)
 	_ admincontracts.Tags                 = (*MockTags)(nil)
 	_ apicontracts.Tags                   = (*MockTags)(nil)
+	_ admincontracts.Users                = (*MockUsers)(nil)
+	_ apicontracts.Users                  = (*MockUsers)(nil)
 	_ apicontracts.Ingest                 = (*MockIngest)(nil)
 	_ apicontracts.IngestEnqueuer         = (*MockIngestEnqueuer)(nil)
 	_ apicontracts.JobReader              = (*MockJobReader)(nil)
@@ -272,6 +274,46 @@ func (m *MockTags) DeleteTag(ctx context.Context, id string) error {
 func (m *MockTags) ListTagsByTenant(ctx context.Context, tenantID string) ([]*models.Tag, error) {
 	if m.OnListTagsByTenant != nil { return m.OnListTagsByTenant(ctx, tenantID) }
 	return []*models.Tag{}, nil
+}
+
+// MockUsers satisfies both api/contracts.Users and admin/contracts.Users.
+type MockUsers struct {
+	OnGetUser            func(ctx context.Context, id string) (*models.User, error)
+	OnGetUserByExternalID func(ctx context.Context, externalID string) (*models.User, error)
+	OnCreateUser         func(ctx context.Context, tenantID, externalID, email, displayName string, role models.UserRole) (*models.User, error)
+	OnUpdateUser         func(ctx context.Context, id, email, displayName string, role models.UserRole, status models.UserStatus) (*models.User, error)
+	OnDeleteUser         func(ctx context.Context, id string) error
+	OnListUsers          func(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.User], error)
+	OnListUsersByTenant  func(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.User], error)
+}
+
+func (m *MockUsers) GetUser(ctx context.Context, id string) (*models.User, error) {
+	if m.OnGetUser != nil { return m.OnGetUser(ctx, id) }
+	return &models.User{}, nil
+}
+func (m *MockUsers) GetUserByExternalID(ctx context.Context, externalID string) (*models.User, error) {
+	if m.OnGetUserByExternalID != nil { return m.OnGetUserByExternalID(ctx, externalID) }
+	return &models.User{}, nil
+}
+func (m *MockUsers) CreateUser(ctx context.Context, tenantID, externalID, email, displayName string, role models.UserRole) (*models.User, error) {
+	if m.OnCreateUser != nil { return m.OnCreateUser(ctx, tenantID, externalID, email, displayName, role) }
+	return &models.User{}, nil
+}
+func (m *MockUsers) UpdateUser(ctx context.Context, id, email, displayName string, role models.UserRole, status models.UserStatus) (*models.User, error) {
+	if m.OnUpdateUser != nil { return m.OnUpdateUser(ctx, id, email, displayName, role, status) }
+	return &models.User{}, nil
+}
+func (m *MockUsers) DeleteUser(ctx context.Context, id string) error {
+	if m.OnDeleteUser != nil { return m.OnDeleteUser(ctx, id) }
+	return nil
+}
+func (m *MockUsers) ListUsers(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.User], error) {
+	if m.OnListUsers != nil { return m.OnListUsers(ctx, page) }
+	return &models.OffsetResult[models.User]{Items: []*models.User{}}, nil
+}
+func (m *MockUsers) ListUsersByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.User], error) {
+	if m.OnListUsersByTenant != nil { return m.OnListUsersByTenant(ctx, tenantID, page) }
+	return &models.OffsetResult[models.User]{Items: []*models.User{}}, nil
 }
 
 // MockIngest satisfies api/contracts.Ingest.

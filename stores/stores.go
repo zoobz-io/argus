@@ -18,6 +18,7 @@ type Stores struct {
 	Jobs                  *Jobs
 	Topics                *Topics
 	Tags                  *Tags
+	Users                 *Users
 }
 
 // New initializes all stores and returns an aggregated Stores instance.
@@ -32,5 +33,6 @@ func New(db *sqlx.DB, renderer astql.Renderer, bucket grub.BucketProvider, searc
 		Jobs:                  NewJobs(db, renderer),
 		Topics:                NewTopics(db, renderer),
 		Tags:                  NewTags(db, renderer),
+		Users:                 NewUsers(db, renderer),
 	}
 }
