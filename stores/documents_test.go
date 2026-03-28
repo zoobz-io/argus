@@ -97,6 +97,23 @@ func TestDocuments_ListDocuments(t *testing.T) {
 	mock.AssertExpectations()
 }
 
+func TestDocuments_ListDocuments_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocuments(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.Document{
+		{ID: "doc-1", Name: "report.pdf", MimeType: "application/pdf", ExternalID: "ext-1", ObjectKey: "obj-1", TenantID: "t-1", ProviderID: "p-1", WatchedPathID: "wp-1", CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListDocuments(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
+	}
+	mock.AssertExpectations()
+}
+
 func TestDocuments_ListDocuments_Error(t *testing.T) {
 	mock := soytesting.NewMockDB(t)
 	store := newTestDocuments(t, mock)
@@ -126,6 +143,23 @@ func TestDocuments_ListDocumentsByTenant(t *testing.T) {
 	}
 	if len(result.Items) != 1 {
 		t.Errorf("Items: got %d, want 1", len(result.Items))
+	}
+	mock.AssertExpectations()
+}
+
+func TestDocuments_ListDocumentsByTenant_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocuments(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.Document{
+		{ID: "doc-1", Name: "report.pdf", MimeType: "application/pdf", ExternalID: "ext-1", ObjectKey: "obj-1", TenantID: "t-1", ProviderID: "p-1", WatchedPathID: "wp-1", CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListDocumentsByTenant(context.Background(), "t-1", models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
 	}
 	mock.AssertExpectations()
 }

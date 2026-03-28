@@ -193,6 +193,23 @@ func TestTenants_ListTenants(t *testing.T) {
 	mock.AssertExpectations()
 }
 
+func TestTenants_ListTenants_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestTenants(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.Tenant{
+		{ID: "t-1", Name: "Acme", Slug: "acme", CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListTenants(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
+	}
+	mock.AssertExpectations()
+}
+
 func TestTenants_ListTenants_QueryError(t *testing.T) {
 	mock := soytesting.NewMockDB(t)
 	store := newTestTenants(t, mock)

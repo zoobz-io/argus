@@ -165,6 +165,23 @@ func TestWatchedPaths_ListWatchedPathsByTenant(t *testing.T) {
 	mock.AssertExpectations()
 }
 
+func TestWatchedPaths_ListWatchedPaths_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestWatchedPaths(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.WatchedPath{
+		{ID: "wp-1", TenantID: "t-1", ProviderID: "p-1", Path: "/docs", Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListWatchedPaths(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
+	}
+	mock.AssertExpectations()
+}
+
 func TestWatchedPaths_ListWatchedPaths_Error(t *testing.T) {
 	mock := soytesting.NewMockDB(t)
 	store := newTestWatchedPaths(t, mock)
@@ -174,6 +191,23 @@ func TestWatchedPaths_ListWatchedPaths_Error(t *testing.T) {
 	_, err := store.ListWatchedPaths(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestWatchedPaths_ListWatchedPathsByTenant_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestWatchedPaths(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.WatchedPath{
+		{ID: "wp-1", TenantID: "t-1", ProviderID: "p-1", Path: "/docs", Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListWatchedPathsByTenant(context.Background(), "t-1", models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
 	}
 	mock.AssertExpectations()
 }

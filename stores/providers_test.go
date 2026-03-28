@@ -238,6 +238,24 @@ func TestProviders_ListProvidersByTenant(t *testing.T) {
 	mock.AssertExpectations()
 }
 
+func TestProviders_ListProviders_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestProviders(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	creds := encryptCreds(t, "secret")
+	mock.ExpectQuery().WithRows([]models.Provider{
+		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "Drive A", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListProviders(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
+	}
+	mock.AssertExpectations()
+}
+
 func TestProviders_ListProviders_Error(t *testing.T) {
 	mock := soytesting.NewMockDB(t)
 	store := newTestProviders(t, mock)
@@ -247,6 +265,24 @@ func TestProviders_ListProviders_Error(t *testing.T) {
 	_, err := store.ListProviders(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestProviders_ListProvidersByTenant_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestProviders(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	creds := encryptCreds(t, "secret")
+	mock.ExpectQuery().WithRows([]models.Provider{
+		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "Drive A", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListProvidersByTenant(context.Background(), "t-1", models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
 	}
 	mock.AssertExpectations()
 }
