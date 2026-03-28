@@ -25,6 +25,8 @@ func (e JobStatusSSE) Clone() JobStatusSSE {
 	return e
 }
 
+const sanitizedErrorMessage = "ingestion failed"
+
 var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 	"job-status",
 	"GET",
@@ -103,7 +105,7 @@ func sanitizeError(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	return "ingestion failed"
+	return sanitizedErrorMessage
 }
 
 // sanitizeJobError returns a generic message if the job has an error.
@@ -111,5 +113,5 @@ func sanitizeJobError(job *models.Job) string {
 	if job.Error == nil || *job.Error == "" {
 		return ""
 	}
-	return "ingestion failed"
+	return sanitizedErrorMessage
 }

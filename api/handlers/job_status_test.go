@@ -23,8 +23,8 @@ func TestSanitizeError_Empty(t *testing.T) {
 
 func TestSanitizeError_NonEmpty(t *testing.T) {
 	got := sanitizeError("indexing version: connection refused to opensearch:9200")
-	if got != "ingestion failed" {
-		t.Errorf("expected generic message, got %q", got)
+	if got != sanitizedErrorMessage {
+		t.Errorf("expected sanitized message, got %q", got)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestSanitizeJobError_NonEmpty(t *testing.T) {
 	msg := "pipeline failed: embed: connection to api.openai.com timed out"
 	job := &models.Job{Error: &msg}
 	got := sanitizeJobError(job)
-	if got != "ingestion failed" {
-		t.Errorf("expected generic message, got %q", got)
+	if got != sanitizedErrorMessage {
+		t.Errorf("expected sanitized message, got %q", got)
 	}
 }
