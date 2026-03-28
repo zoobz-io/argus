@@ -36,8 +36,8 @@ func (e *Enqueuer) Enqueue(ctx context.Context, versionID, tenantID string) (*mo
 		return nil, fmt.Errorf("fetching document version: not found")
 	}
 
-	if _, err := documents.GetDocument(ctx, version.DocumentID); err != nil {
-		return nil, fmt.Errorf("fetching document: %w", err)
+	if _, docErr := documents.GetDocument(ctx, version.DocumentID); docErr != nil {
+		return nil, fmt.Errorf("fetching document: %w", docErr)
 	}
 
 	job, err := jobs.CreateJob(ctx, version.ID, version.DocumentID, version.TenantID)
