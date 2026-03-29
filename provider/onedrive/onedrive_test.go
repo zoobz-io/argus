@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -21,12 +22,20 @@ var _ provider.Provider = (*OneDrive)(nil)
 // --- test helpers ---
 
 // fakeServer returns an httptest.Server that routes by path prefix.
+// Routes are matched longest-prefix-first to avoid ambiguity.
 func fakeServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
+	prefixes := make([]string, 0, len(handlers))
+	for p := range handlers {
+		prefixes = append(prefixes, p)
+	}
+	sort.Slice(prefixes, func(i, j int) bool {
+		return len(prefixes[i]) > len(prefixes[j])
+	})
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for prefix, handler := range handlers {
+		for _, prefix := range prefixes {
 			if strings.HasPrefix(r.URL.Path, prefix) {
-				handler(w, r)
+				handlers[prefix](w, r)
 				return
 			}
 		}
@@ -500,10 +509,11 @@ func TestChanges_FolderScoped(t *testing.T) {
 func TestFetch_RegularFile(t *testing.T) {
 	server := fakeServer(t, map[string]http.HandlerFunc{
 		"/token": tokenHandler(),
-		"/me/drive/items/file-1/content": func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("pdf bytes"))
-		},
-		"/me/drive/items/file-1": func(w http.ResponseWriter, _ *http.Request) {
+		"/me/drive/items/": func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/content") {
+				_, _ = w.Write([]byte("pdf bytes"))
+				return
+			}
 			jsonResponse(w, mustJSON(map[string]any{
 				"id": "file-1", "name": "report.pdf", "size": 9,
 				"file": map[string]any{
