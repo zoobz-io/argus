@@ -299,3 +299,88 @@ func TestProviders_ListProvidersByTenant_Error(t *testing.T) {
 	}
 	mock.AssertExpectations()
 }
+
+func TestProviders_GetProviderByTenant(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestProviders(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	creds := encryptCreds(t, "secret")
+	mock.ExpectQuery().WithRows([]models.Provider{
+		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "My Drive", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+
+	provider, err := store.GetProviderByTenant(context.Background(), "p-1", "t-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if provider.ID != "p-1" {
+		t.Errorf("ID: got %q, want %q", provider.ID, "p-1")
+	}
+	if provider.TenantID != "t-1" {
+		t.Errorf("TenantID: got %q, want %q", provider.TenantID, "t-1")
+	}
+	mock.AssertExpectations()
+}
+
+func TestProviders_GetProviderByTenant_NotFound(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestProviders(t, mock)
+
+	mock.ExpectQuery().WithRows([]models.Provider{})
+
+	_, err := store.GetProviderByTenant(context.Background(), "p-1", "t-wrong")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestProviders_GetProviderByTenant_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestProviders(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("db error"))
+
+	_, err := store.GetProviderByTenant(context.Background(), "p-1", "t-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestProviders_UpdateProviderCredentials(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestProviders(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	creds := encryptCreds(t, "secret")
+
+	// GetProvider (SELECT)
+	mock.ExpectQuery().WithRows([]models.Provider{
+		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "My Drive", Credentials: creds, Active: false, CreatedAt: ts, UpdatedAt: ts},
+	})
+	// Set (INSERT...RETURNING)
+	mock.ExpectQuery().WithRows([]models.Provider{
+		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "My Drive", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+
+	err := store.UpdateProviderCredentials(context.Background(), "p-1", "new-creds")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mock.AssertExpectations()
+}
+
+func TestProviders_UpdateProviderCredentials_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestProviders(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("not found"))
+
+	err := store.UpdateProviderCredentials(context.Background(), "missing", "creds")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
