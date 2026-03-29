@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,69 +62,92 @@ func (a *AzureBlob) List(ctx context.Context, creds *provider.Credentials, path 
 
 	prefix := normalizePath(path)
 
-	url := fmt.Sprintf("%s/%s?restype=container&comp=list&delimiter=/", endpoint, container)
+	baseURL := fmt.Sprintf("%s/%s", endpoint, container)
+	params := url.Values{}
+	params.Set("restype", "container")
+	params.Set("comp", "list")
+	params.Set("delimiter", "/")
 	if prefix != "" {
-		url += "&prefix=" + prefix
+		params.Set("prefix", prefix)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating list request: %w", err)
-	}
+	var entries []provider.Entry
+	marker := ""
 
-	if signErr := a.signRequest(req, creds); signErr != nil {
-		return nil, nil, fmt.Errorf("signing list request: %w", signErr)
-	}
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("listing blobs: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, nil, fmt.Errorf("list blobs: status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result listBlobsResult
-	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, nil, fmt.Errorf("decoding list response: %w", err)
-	}
-
-	entries := make([]provider.Entry, 0, len(result.Blobs.BlobPrefixes)+len(result.Blobs.Blobs))
-
-	// Virtual directories (prefixes).
-	for _, bp := range result.Blobs.BlobPrefixes {
-		name := strings.TrimSuffix(bp.Name, "/")
-		if i := strings.LastIndex(name, "/"); i >= 0 {
-			name = name[i+1:]
+	for {
+		qp := make(url.Values)
+		for k, v := range params {
+			qp[k] = v
 		}
-		entries = append(entries, provider.Entry{
-			Ref:      bp.Name,
-			Name:     name,
-			IsFolder: true,
-		})
-	}
+		if marker != "" {
+			qp.Set("marker", marker)
+		}
 
-	// Blobs.
-	for _, b := range result.Blobs.Blobs {
-		name := b.Name
-		if i := strings.LastIndex(name, "/"); i >= 0 {
-			name = name[i+1:]
+		reqURL := baseURL + "?" + qp.Encode()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating list request: %w", err)
 		}
-		var modTime time.Time
-		if b.Properties.LastModified != "" {
-			modTime, _ = time.Parse(time.RFC1123, b.Properties.LastModified)
+
+		if signErr := a.signRequest(req, creds); signErr != nil {
+			return nil, nil, fmt.Errorf("signing list request: %w", signErr)
 		}
-		entries = append(entries, provider.Entry{
-			Ref:         b.Name,
-			Name:        name,
-			MimeType:    b.Properties.ContentType,
-			Size:        b.Properties.ContentLength,
-			ContentHash: b.Properties.ContentMD5,
-			ModifiedAt:  modTime,
-		})
+
+		resp, err := a.client.Do(req)
+		if err != nil {
+			return nil, nil, fmt.Errorf("listing blobs: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return nil, nil, fmt.Errorf("list blobs: status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var result listBlobsResult
+		if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+			_ = resp.Body.Close()
+			return nil, nil, fmt.Errorf("decoding list response: %w", err)
+		}
+		_ = resp.Body.Close()
+
+		// Virtual directories (prefixes).
+		for _, bp := range result.Blobs.BlobPrefixes {
+			name := strings.TrimSuffix(bp.Name, "/")
+			if i := strings.LastIndex(name, "/"); i >= 0 {
+				name = name[i+1:]
+			}
+			entries = append(entries, provider.Entry{
+				Ref:      bp.Name,
+				Name:     name,
+				IsFolder: true,
+			})
+		}
+
+		// Blobs.
+		for _, b := range result.Blobs.Blobs {
+			name := b.Name
+			if i := strings.LastIndex(name, "/"); i >= 0 {
+				name = name[i+1:]
+			}
+			var modTime time.Time
+			if b.Properties.LastModified != "" {
+				modTime, _ = time.Parse(time.RFC1123, b.Properties.LastModified)
+			}
+			entries = append(entries, provider.Entry{
+				Ref:         b.Name,
+				Name:        name,
+				MimeType:    b.Properties.ContentType,
+				Size:        b.Properties.ContentLength,
+				ContentHash: b.Properties.ContentMD5,
+				ModifiedAt:  modTime,
+			})
+		}
+
+		if result.NextMarker == "" {
+			break
+		}
+		marker = result.NextMarker
 	}
 
 	return entries, nil, nil
@@ -152,65 +176,88 @@ func (a *AzureBlob) Changes(ctx context.Context, creds *provider.Credentials, pa
 
 	prefix := normalizePath(path)
 
-	url := fmt.Sprintf("%s/%s?restype=container&comp=list", endpoint, container)
+	baseURL := fmt.Sprintf("%s/%s", endpoint, container)
+	params := url.Values{}
+	params.Set("restype", "container")
+	params.Set("comp", "list")
 	if prefix != "" {
-		url += "&prefix=" + prefix
+		params.Set("prefix", prefix)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, syncToken, nil, fmt.Errorf("creating changes request: %w", err)
-	}
+	var changes []provider.Change
+	marker := ""
 
-	if signErr := a.signRequest(req, creds); signErr != nil {
-		return nil, syncToken, nil, fmt.Errorf("signing changes request: %w", signErr)
-	}
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, syncToken, nil, fmt.Errorf("listing changes: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, syncToken, nil, fmt.Errorf("list changes: status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var result listBlobsResult
-	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, syncToken, nil, fmt.Errorf("decoding changes response: %w", err)
-	}
-
-	changes := make([]provider.Change, 0, len(result.Blobs.Blobs))
-	for _, b := range result.Blobs.Blobs {
-		var modTime time.Time
-		if b.Properties.LastModified != "" {
-			modTime, _ = time.Parse(time.RFC1123, b.Properties.LastModified)
+	for {
+		qp := make(url.Values)
+		for k, v := range params {
+			qp[k] = v
+		}
+		if marker != "" {
+			qp.Set("marker", marker)
 		}
 
-		if !modTime.After(since) {
-			continue
+		reqURL := baseURL + "?" + qp.Encode()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return nil, syncToken, nil, fmt.Errorf("creating changes request: %w", err)
 		}
 
-		name := b.Name
-		if i := strings.LastIndex(name, "/"); i >= 0 {
-			name = name[i+1:]
+		if signErr := a.signRequest(req, creds); signErr != nil {
+			return nil, syncToken, nil, fmt.Errorf("signing changes request: %w", signErr)
 		}
 
-		entry := provider.Entry{
-			Ref:         b.Name,
-			Name:        name,
-			MimeType:    b.Properties.ContentType,
-			Size:        b.Properties.ContentLength,
-			ContentHash: b.Properties.ContentMD5,
-			ModifiedAt:  modTime,
+		resp, err := a.client.Do(req)
+		if err != nil {
+			return nil, syncToken, nil, fmt.Errorf("listing changes: %w", err)
 		}
-		changes = append(changes, provider.Change{
-			Ref:   b.Name,
-			Entry: &entry,
-			Type:  provider.ChangeModified,
-		})
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return nil, syncToken, nil, fmt.Errorf("list changes: status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var result listBlobsResult
+		if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+			_ = resp.Body.Close()
+			return nil, syncToken, nil, fmt.Errorf("decoding changes response: %w", err)
+		}
+		_ = resp.Body.Close()
+
+		for _, b := range result.Blobs.Blobs {
+			var modTime time.Time
+			if b.Properties.LastModified != "" {
+				modTime, _ = time.Parse(time.RFC1123, b.Properties.LastModified)
+			}
+
+			if !modTime.After(since) {
+				continue
+			}
+
+			name := b.Name
+			if i := strings.LastIndex(name, "/"); i >= 0 {
+				name = name[i+1:]
+			}
+
+			entry := provider.Entry{
+				Ref:         b.Name,
+				Name:        name,
+				MimeType:    b.Properties.ContentType,
+				Size:        b.Properties.ContentLength,
+				ContentHash: b.Properties.ContentMD5,
+				ModifiedAt:  modTime,
+			}
+			changes = append(changes, provider.Change{
+				Ref:   b.Name,
+				Entry: &entry,
+				Type:  provider.ChangeModified,
+			})
+		}
+
+		if result.NextMarker == "" {
+			break
+		}
+		marker = result.NextMarker
 	}
 
 	return changes, now, nil, nil
@@ -223,9 +270,9 @@ func (a *AzureBlob) Fetch(ctx context.Context, creds *provider.Credentials, ref 
 		return nil, nil, nil, err
 	}
 
-	url := fmt.Sprintf("%s/%s/%s", endpoint, container, ref)
+	fetchURL := fmt.Sprintf("%s/%s/%s", endpoint, container, escapeRefPath(ref))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fetchURL, nil)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("creating fetch request: %w", err)
 	}
@@ -370,6 +417,16 @@ func (a *AzureBlob) resolveEndpoint(creds *provider.Credentials) (string, string
 	return endpoint, container, nil
 }
 
+// escapeRefPath escapes each segment of a blob ref path individually,
+// preserving "/" as the path separator while encoding special characters.
+func escapeRefPath(ref string) string {
+	segments := strings.Split(ref, "/")
+	for i, seg := range segments {
+		segments[i] = url.PathEscape(seg)
+	}
+	return strings.Join(segments, "/")
+}
+
 // normalizePath ensures a prefix path ends with "/" if non-empty.
 func normalizePath(path string) string {
 	if path == "" || path == "/" {
@@ -385,8 +442,9 @@ func normalizePath(path string) string {
 // XML structures for Azure Blob Storage list responses.
 
 type listBlobsResult struct {
-	XMLName xml.Name  `xml:"EnumerationResults"`
-	Blobs   blobsList `xml:"Blobs"`
+	XMLName    xml.Name  `xml:"EnumerationResults"`
+	NextMarker string    `xml:"NextMarker"`
+	Blobs      blobsList `xml:"Blobs"`
 }
 
 type blobsList struct {

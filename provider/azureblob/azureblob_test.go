@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -274,6 +275,69 @@ func TestList_ServerError(t *testing.T) {
 	}
 }
 
+func TestList_Pagination(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		w.Header().Set("Content-Type", "application/xml")
+		if n == 1 {
+			// First page: one blob + NextMarker.
+			if r.URL.Query().Get("marker") != "" {
+				t.Errorf("first request should not have marker, got %q", r.URL.Query().Get("marker"))
+			}
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>file1.txt</Name>
+      <Properties>
+        <Content-Type>text/plain</Content-Type>
+        <Content-Length>10</Content-Length>
+      </Properties>
+    </Blob>
+  </Blobs>
+  <NextMarker>marker-page2</NextMarker>
+</EnumerationResults>`))
+			return
+		}
+		// Second page: one blob, no NextMarker.
+		if r.URL.Query().Get("marker") != "marker-page2" {
+			t.Errorf("second request should have marker=marker-page2, got %q", r.URL.Query().Get("marker"))
+		}
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>file2.txt</Name>
+      <Properties>
+        <Content-Type>text/plain</Content-Type>
+        <Content-Length>20</Content-Length>
+      </Properties>
+    </Blob>
+  </Blobs>
+</EnumerationResults>`))
+	}))
+	defer server.Close()
+
+	a := New()
+	entries, _, err := a.List(context.Background(), validCreds(server.URL), "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries across pages, got %d", len(entries))
+	}
+	if entries[0].Name != "file1.txt" {
+		t.Errorf("entry 0: got %q", entries[0].Name)
+	}
+	if entries[1].Name != "file2.txt" {
+		t.Errorf("entry 1: got %q", entries[1].Name)
+	}
+	if calls.Load() != 2 {
+		t.Errorf("expected 2 HTTP calls, got %d", calls.Load())
+	}
+}
+
 func TestChanges_InitialSync(t *testing.T) {
 	a := New()
 	changes, token, updatedCr, err := a.Changes(context.Background(), validCreds("http://unused"), "", "")
@@ -393,6 +457,30 @@ func TestFetch_Success(t *testing.T) {
 	}
 	if updatedCr != nil {
 		t.Error("expected nil updated creds")
+	}
+}
+
+func TestFetch_EscapesRef(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The ref "docs/my file.txt" should arrive with space encoded.
+		if !strings.Contains(r.URL.RawPath, "my%20file.txt") && !strings.Contains(r.URL.RequestURI(), "my%20file.txt") {
+			t.Errorf("expected escaped ref in URL, got path=%q raw=%q", r.URL.Path, r.URL.RawPath)
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Length", "5")
+		_, _ = w.Write([]byte("hello"))
+	}))
+	defer server.Close()
+
+	a := New()
+	rc, meta, _, err := a.Fetch(context.Background(), validCreds(server.URL), "docs/my file.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+
+	if meta.Name != "my file.txt" {
+		t.Errorf("name: got %q", meta.Name)
 	}
 }
 
