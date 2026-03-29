@@ -91,9 +91,11 @@ func run() error {
 	renderer := astqlpg.New()
 	subStore := stores.NewSubscriptions(db, renderer)
 	notifStore := stores.NewNotifications(searchProvider)
+	auditStore := stores.NewAudit(searchProvider)
 
 	sum.Register[intcontracts.NotifySubscriptions](k, subStore)
 	sum.Register[intcontracts.NotifyIndexer](k, notifStore)
+	sum.Register[intcontracts.AuditIndexer](k, auditStore)
 
 	// =========================================================================
 	// 4. Create Pipeline and Freeze
@@ -193,6 +195,45 @@ func run() error {
 	})
 
 	log.Println("notification fan-out pipeline registered")
+
+	// =========================================================================
+	// 8b. Herald Subscriber: audit stream → direct index
+	// =========================================================================
+
+	auditStream := heraldredis.New("argus:audit",
+		heraldredis.WithClient(redisClient),
+		heraldredis.WithGroup(notifCfg.ConsumerGroup),
+		heraldredis.WithConsumer(hostname),
+	)
+	auditSub := herald.NewSubscriber(
+		auditStream,
+		events.AuditSignal,
+		events.AuditKey,
+		[]herald.Option[models.AuditEntry]{
+			herald.WithRetry[models.AuditEntry](3),
+		},
+	)
+	auditSub.Start(ctx)
+	defer func() { _ = auditSub.Close() }()
+	log.Println("audit subscriber started")
+
+	capitan.Hook(events.AuditSignal, func(ctx context.Context, e *capitan.Event) {
+		entry, ok := events.AuditKey.From(e)
+		if !ok {
+			return
+		}
+		if err := auditStore.Index(ctx, &entry); err != nil {
+			capitan.Error(ctx, events.AuditIndexError,
+				events.AuditActionKey.Field(entry.Action),
+				events.AuditErrorKey.Field(err),
+			)
+			return
+		}
+		capitan.Info(ctx, events.AuditIndexed,
+			events.AuditActionKey.Field(entry.Action),
+		)
+	})
+	log.Println("audit indexer hook registered")
 
 	// =========================================================================
 	// 9. Herald Publisher: notify hints → argus:notify-hints stream

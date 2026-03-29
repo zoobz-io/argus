@@ -4,6 +4,7 @@ import (
 	"github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/argus/api/transformers"
 	"github.com/zoobz-io/argus/api/wire"
+	"github.com/zoobz-io/argus/internal/audit"
 	"github.com/zoobz-io/rocco"
 	"github.com/zoobz-io/sum"
 )
@@ -47,6 +48,9 @@ var createTopic = rocco.POST[wire.TopicCreateRequest, wire.TopicResponse]("/topi
 	if err != nil {
 		return wire.TopicResponse{}, err
 	}
+	audit.Emit(r, "topic.created", "topic", topic.ID, tid, r.Identity.ID(), map[string]any{
+		"name": r.Body.Name,
+	})
 	return transformers.TopicToResponse(topic), nil
 }).
 	WithSummary("Create topic").
@@ -66,6 +70,9 @@ var updateTopic = rocco.PUT[wire.TopicCreateRequest, wire.TopicResponse]("/topic
 	if err != nil {
 		return wire.TopicResponse{}, ErrTopicNotFound
 	}
+	audit.Emit(r, "topic.updated", "topic", topic.ID, tenantID(r.Identity), r.Identity.ID(), map[string]any{
+		"name": r.Body.Name,
+	})
 	return transformers.TopicToResponse(topic), nil
 }).
 	WithSummary("Update topic").

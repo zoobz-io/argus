@@ -45,5 +45,7 @@ func All() []rocco.Endpoint {
 		createUser,
 		updateUser,
 		deleteUser,
+		// Audit
+		listAdminAuditLog,
 	}
 }

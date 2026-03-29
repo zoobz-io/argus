@@ -32,7 +32,7 @@ require (
 	github.com/zoobz-io/herald/redis v1.0.4
 	github.com/zoobz-io/lucene v0.0.4
 	github.com/zoobz-io/pipz v1.0.5
-	github.com/zoobz-io/rocco v0.1.16
+	github.com/zoobz-io/rocco v0.1.18
 	github.com/zoobz-io/soy v1.0.8
 	github.com/zoobz-io/soy/testing v0.0.0-20260326212003-c968b42d4748
 	github.com/zoobz-io/streamz v1.0.7
