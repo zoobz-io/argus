@@ -17,6 +17,7 @@ import (
 	"github.com/zoobz-io/capitan"
 	"github.com/zoobz-io/herald"
 	heraldredis "github.com/zoobz-io/herald/redis"
+	"github.com/zoobz-io/pipz"
 	"github.com/zoobz-io/sum"
 
 	"github.com/zoobz-io/argus/config"
@@ -305,15 +306,32 @@ func run() error {
 	defer func() { _ = ingestSub.Close() }()
 	log.Println("ingestion queue subscriber started")
 
+	// WorkerPool: bounded pipeline concurrency.
+	processor := pipz.Apply(
+		pipz.NewIdentity("ingest-worker", "Process ingestion job"),
+		func(ctx context.Context, job ingestJob) (ingestJob, error) {
+			if err := pipeline.Ingest(ctx, job.JobID, job.VersionID); err != nil {
+				log.Printf("pipeline error for job %s: %v", job.JobID, err)
+				// Job failure is logged, not fatal to the pool.
+			}
+			return job, nil
+		},
+	)
+
+	pool := pipz.NewWorkerPool(
+		pipz.NewIdentity("ingest-pool", "Bounded pipeline concurrency"),
+		workerCfg.WorkerCount,
+		processor,
+	)
+	defer func() { _ = pool.Close() }()
+
 	capitan.Hook(events.IngestQueueSignal, func(ctx context.Context, e *capitan.Event) {
 		msg, ok := events.IngestQueueKey.From(e)
 		if !ok {
 			return
 		}
 		log.Printf("processing job %s (version %s)", msg.JobID, msg.VersionID)
-		if err := pipeline.Ingest(ctx, msg.JobID, msg.VersionID); err != nil {
-			log.Printf("pipeline error for job %s: %v", msg.JobID, err)
-		}
+		_, _ = pool.Process(ctx, ingestJob{JobID: msg.JobID, VersionID: msg.VersionID})
 	})
 
 	// =========================================================================
@@ -325,3 +343,12 @@ func run() error {
 	log.Println("shutting down...")
 	return nil
 }
+
+// ingestJob carries job and version identifiers through the worker pool.
+type ingestJob struct {
+	JobID     string
+	VersionID string
+}
+
+// Clone implements pipz.Cloner for parallel dispatch.
+func (j ingestJob) Clone() ingestJob { return j }
