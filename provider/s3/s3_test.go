@@ -19,9 +19,18 @@ var _ provider.Provider = (*S3)(nil)
 // --- test helpers ---
 
 // fakeServer returns an httptest.Server that routes by path prefix.
+// Every request is validated for the presence of an Authorization header.
 func fakeServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Validate that requests carry AWS Signature V4 Authorization header.
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "AWS4-HMAC-SHA256 ") {
+			t.Errorf("missing or invalid Authorization header: %q", auth)
+			http.Error(w, "unauthorized", http.StatusForbidden)
+			return
+		}
+
 		for prefix, handler := range handlers {
 			if strings.HasPrefix(r.URL.Path, prefix) {
 				handler(w, r)
@@ -75,12 +84,12 @@ func TestType(t *testing.T) {
 
 func TestAuthURL_ReturnsError(t *testing.T) {
 	s := New()
-	url, err := s.AuthURL(context.Background(), "https://example.com/callback", "state")
+	u, err := s.AuthURL(context.Background(), "https://example.com/callback", "state")
 	if err == nil {
 		t.Fatal("expected error from AuthURL")
 	}
-	if url != "" {
-		t.Errorf("expected empty URL, got %q", url)
+	if u != "" {
+		t.Errorf("expected empty URL, got %q", u)
 	}
 	if !strings.Contains(err.Error(), "static credentials") {
 		t.Errorf("error should mention static credentials, got %q", err.Error())
@@ -176,6 +185,22 @@ func TestObjectName(t *testing.T) {
 	}
 }
 
+func TestEscapeObjectKey(t *testing.T) {
+	tests := []struct {
+		key, want string
+	}{
+		{"docs/report.pdf", "docs/report.pdf"},
+		{"docs/my file.pdf", "docs/my%20file.pdf"},
+		{"report.pdf", "report.pdf"},
+		{"path/with spaces/and+plus.txt", "path/with%20spaces/and+plus.txt"},
+	}
+	for _, tt := range tests {
+		if got := escapeObjectKey(tt.key); got != tt.want {
+			t.Errorf("escapeObjectKey(%q) = %q, want %q", tt.key, got, tt.want)
+		}
+	}
+}
+
 func TestResolveEndpoint_Override(t *testing.T) {
 	s := New(WithEndpoint("http://localhost:9000"))
 	got := s.resolveEndpoint(validCreds())
@@ -219,6 +244,51 @@ func TestCredentialsNeverExpire(t *testing.T) {
 	creds := validCreds()
 	if creds.Expired() {
 		t.Error("S3 credentials with zero expiry should never be expired")
+	}
+}
+
+// --- unit tests: signing ---
+
+func TestSignRequest_SetsAuthorizationHeader(t *testing.T) {
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://s3.us-east-1.amazonaws.com/bucket/key", nil)
+	s := New()
+	creds := validCreds()
+	s.signRequest(req, creds)
+
+	auth := req.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "AWS4-HMAC-SHA256 ") {
+		t.Errorf("expected AWS4-HMAC-SHA256 auth header, got %q", auth)
+	}
+	if !strings.Contains(auth, "Credential=AKIAIOSFODNN7EXAMPLE/") {
+		t.Errorf("auth header missing access key: %q", auth)
+	}
+	if !strings.Contains(auth, "SignedHeaders=") {
+		t.Errorf("auth header missing signed headers: %q", auth)
+	}
+	if !strings.Contains(auth, "Signature=") {
+		t.Errorf("auth header missing signature: %q", auth)
+	}
+
+	amzDate := req.Header.Get("X-Amz-Date")
+	if amzDate == "" {
+		t.Error("missing X-Amz-Date header")
+	}
+}
+
+func TestSignRequest_SkipsWithoutCredentials(t *testing.T) {
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com", nil)
+	s := New()
+
+	// nil creds
+	s.signRequest(req, nil)
+	if req.Header.Get("Authorization") != "" {
+		t.Error("should not sign with nil creds")
+	}
+
+	// empty access key
+	s.signRequest(req, &provider.Credentials{})
+	if req.Header.Get("Authorization") != "" {
+		t.Error("should not sign with empty access key")
 	}
 }
 
@@ -320,6 +390,10 @@ func TestList_Pagination(t *testing.T) {
 					},
 				})
 				return
+			}
+			// Verify continuation token was passed properly.
+			if ct := r.URL.Query().Get("continuation-token"); ct != "token-2" {
+				t.Errorf("expected continuation-token=token-2, got %q", ct)
 			}
 			xmlResponse(w, listBucketResult{
 				Contents: []s3Object{
@@ -504,5 +578,56 @@ func TestFetch_MissingBucket(t *testing.T) {
 	_, _, _, err := s.Fetch(context.Background(), &provider.Credentials{}, "key")
 	if err == nil {
 		t.Fatal("expected error for missing bucket")
+	}
+}
+
+// --- integration tests: Fetch with special characters (url.PathEscape) ---
+
+func TestFetch_SpecialCharactersInKey(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/test-bucket/docs/my file.pdf": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/pdf")
+			w.Header().Set("Content-Length", "4")
+			_, _ = w.Write([]byte("data"))
+		},
+	})
+	defer server.Close()
+
+	s := newTestProvider(t, server)
+	rc, meta, _, err := s.Fetch(context.Background(), validCreds(), "docs/my file.pdf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+
+	if meta.Name != "my file.pdf" {
+		t.Errorf("name: got %q, want %q", meta.Name, "my file.pdf")
+	}
+}
+
+// --- integration tests: query parameter encoding ---
+
+func TestList_QueryParamsProperlyEncoded(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/test-bucket": func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			if q.Get("list-type") != "2" {
+				t.Errorf("list-type: got %q", q.Get("list-type"))
+			}
+			if q.Get("prefix") != "path with spaces/" {
+				t.Errorf("prefix: got %q, want %q", q.Get("prefix"), "path with spaces/")
+			}
+			if q.Get("delimiter") != "/" {
+				t.Errorf("delimiter: got %q", q.Get("delimiter"))
+			}
+			xmlResponse(w, listBucketResult{})
+		},
+	})
+	defer server.Close()
+
+	s := newTestProvider(t, server)
+	_, _, err := s.List(context.Background(), validCreds(), "path with spaces")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
