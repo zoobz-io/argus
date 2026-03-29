@@ -18,8 +18,8 @@ type Hooks interface {
 	DeleteHook(ctx context.Context, tenantID string, id string) error
 }
 
-// Deliveries defines the contract for webhook delivery operations on the public API surface.
+// Deliveries defines the contract for webhook delivery log queries.
 type Deliveries interface {
-	// ListByHook retrieves a paginated list of deliveries for a webhook endpoint.
+	// ListByHook retrieves a paginated list of deliveries for a hook scoped to a tenant.
 	ListByHook(ctx context.Context, tenantID string, hookID string, page models.OffsetPage) (*models.OffsetResult[models.Delivery], error)
 }
