@@ -15,11 +15,11 @@ import (
 
 // Emit publishes an audit entry onto the AuditSignal for downstream indexing.
 func Emit(ctx context.Context, action, resourceType, resourceID, tenantID, actorID string, metadata map[string]any) {
-	var metaStr string
+	var metaJSON json.RawMessage
 	if metadata != nil {
 		b, err := json.Marshal(metadata)
 		if err == nil {
-			metaStr = string(b)
+			metaJSON = b
 		}
 	}
 	entry := models.AuditEntry{
@@ -30,7 +30,7 @@ func Emit(ctx context.Context, action, resourceType, resourceID, tenantID, actor
 		ResourceID:   resourceID,
 		TenantID:     tenantID,
 		ActorID:      actorID,
-		Metadata:     metaStr,
+		Metadata:     metaJSON,
 	}
 	capitan.Info(ctx, events.AuditSignal, events.AuditKey.Field(entry))
 }

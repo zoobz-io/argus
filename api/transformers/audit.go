@@ -1,18 +1,12 @@
 package transformers
 
 import (
-	"encoding/json"
-
 	"github.com/zoobz-io/argus/api/wire"
 	"github.com/zoobz-io/argus/models"
 )
 
 // AuditEntryToResponse transforms an AuditEntry model to an API response.
 func AuditEntryToResponse(e *models.AuditEntry) wire.AuditEntryResponse {
-	var metadata json.RawMessage
-	if e.Metadata != "" {
-		metadata = json.RawMessage(e.Metadata)
-	}
 	return wire.AuditEntryResponse{
 		ID:           e.ID,
 		Timestamp:    e.Timestamp,
@@ -20,7 +14,7 @@ func AuditEntryToResponse(e *models.AuditEntry) wire.AuditEntryResponse {
 		ResourceType: e.ResourceType,
 		ResourceID:   e.ResourceID,
 		ActorID:      e.ActorID,
-		Metadata:     metadata,
+		Metadata:     e.Metadata,
 	}
 }
 

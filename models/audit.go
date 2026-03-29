@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // AuditEntry is the OpenSearch document type for compliance audit logging.
 type AuditEntry struct {
@@ -11,12 +14,17 @@ type AuditEntry struct {
 	ID           string    `json:"id"`
 	TenantID     string    `json:"tenant_id"`
 	ActorID      string    `json:"actor_id"`
-	Metadata     string    `json:"metadata"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
 }
 
 // Clone returns a deep copy of the audit entry.
 func (a AuditEntry) Clone() AuditEntry {
-	return a
+	c := a
+	if a.Metadata != nil {
+		c.Metadata = make(json.RawMessage, len(a.Metadata))
+		copy(c.Metadata, a.Metadata)
+	}
+	return c
 }
 
 // AuditSearchParams holds filter parameters for audit log queries.

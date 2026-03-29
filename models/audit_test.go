@@ -1,6 +1,8 @@
 package models
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -14,7 +16,7 @@ func TestAuditEntry_Clone(t *testing.T) {
 		ResourceID:   "p-1",
 		TenantID:     "t-1",
 		ActorID:      "u-1",
-		Metadata:     `{"provider_type":"google_drive","provider_name":"My Drive"}`,
+		Metadata:     json.RawMessage(`{"provider_type":"google_drive"}`),
 	}
 
 	clone := entry.Clone()
@@ -23,20 +25,26 @@ func TestAuditEntry_Clone(t *testing.T) {
 		t.Error("Clone did not copy all fields")
 	}
 
-	if clone.Metadata != entry.Metadata {
+	if !bytes.Equal(clone.Metadata, entry.Metadata) {
 		t.Error("Clone did not copy metadata")
+	}
+
+	// Verify deep copy — mutating clone should not affect original.
+	clone.Metadata[0] = 'X'
+	if entry.Metadata[0] == 'X' {
+		t.Error("Clone metadata is not independent")
 	}
 }
 
-func TestAuditEntry_Clone_EmptyMetadata(t *testing.T) {
+func TestAuditEntry_Clone_NilMetadata(t *testing.T) {
 	entry := AuditEntry{
 		ID:     "a-2",
 		Action: "tenant.deleted",
 	}
 
 	clone := entry.Clone()
-	if clone.Metadata != "" {
-		t.Error("empty metadata should remain empty after clone")
+	if clone.Metadata != nil {
+		t.Error("nil metadata should remain nil after clone")
 	}
 }
 
