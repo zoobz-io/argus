@@ -25,6 +25,7 @@ import (
 	"github.com/zoobz-io/argus/internal/auth"
 	"github.com/zoobz-io/argus/internal/boot"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
+	"github.com/zoobz-io/argus/internal/ratelimit"
 	"github.com/zoobz-io/argus/internal/ingest"
 	"github.com/zoobz-io/argus/internal/vocabulary"
 	"github.com/zoobz-io/argus/models"
@@ -80,6 +81,9 @@ func run() error {
 	}
 	if err := sum.Config[config.Auth](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load auth config: %w", err)
+	}
+	if err := sum.Config[config.RateLimit](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load rate limit config: %w", err)
 	}
 	encCfg := sum.MustUse[config.Encryption](ctx)
 	encKey, err := hex.DecodeString(encCfg.Key)
@@ -281,6 +285,11 @@ func run() error {
 	// =========================================================================
 	// 8. Register Handlers and Start Server
 	// =========================================================================
+
+	// Rate limiting middleware — runs before auth, keyed by client IP.
+	rlCfg := sum.MustUse[config.RateLimit](ctx)
+	rateLimiter := ratelimit.New(redisClient, rlCfg.RequestsPerMinute)
+	svc.Engine().WithMiddleware(rateLimiter.Middleware())
 
 	svc.Handle(handlers.All()...)
 	svc.Handle(adminhandlers.All()...)
