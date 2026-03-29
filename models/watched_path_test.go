@@ -33,3 +33,27 @@ func TestWatchedPath_Clone(t *testing.T) {
 		t.Error("mutating clone leaked to original")
 	}
 }
+
+func TestWatchedPath_Clone_SyncState(t *testing.T) {
+	state := `{"token":"abc123"}`
+	w := WatchedPath{ID: "wp-1", SyncState: &state}
+	clone := w.Clone()
+
+	if clone.SyncState == nil || *clone.SyncState != state {
+		t.Error("Clone did not copy SyncState")
+	}
+
+	*clone.SyncState = "mutated"
+	if *w.SyncState != `{"token":"abc123"}` {
+		t.Error("mutating clone SyncState leaked to original")
+	}
+}
+
+func TestWatchedPath_Clone_NilSyncState(t *testing.T) {
+	w := WatchedPath{ID: "wp-1"}
+	clone := w.Clone()
+
+	if clone.SyncState != nil {
+		t.Error("Clone should preserve nil SyncState")
+	}
+}
