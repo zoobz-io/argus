@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/zoobz-io/capitan"
 	"github.com/zoobz-io/cereal"
@@ -162,6 +163,7 @@ func run() error {
 	sum.Register[apicontracts.Users](k, allStores.Users)
 	sum.Register[apicontracts.Subscriptions](k, allStores.Subscriptions)
 	sum.Register[apicontracts.Notifications](k, allStores.Notifications)
+	sum.Register[apicontracts.AuditLog](k, allStores.Audit)
 
 	// Admin API contracts
 	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
@@ -174,6 +176,7 @@ func run() error {
 	sum.Register[admincontracts.Tags](k, allStores.Tags)
 	sum.Register[admincontracts.Users](k, allStores.Users)
 	sum.Register[admincontracts.Subscriptions](k, allStores.AdminSubscriptions)
+	sum.Register[admincontracts.AuditLog](k, allStores.Audit)
 
 	// Internal contracts — enqueuer needs versions, documents, jobs.
 	// Classifier needed by vocabulary pipeline.
@@ -281,6 +284,21 @@ func run() error {
 	notifyHintSub.Start(ctx)
 	defer func() { _ = notifyHintSub.Close() }()
 	log.Println("notify hints subscriber initialized")
+
+	// Herald Publisher: AuditSignal → argus:audit stream
+	auditStream := heraldredis.New("argus:audit", heraldredis.WithClient(redisClient))
+	auditPub := herald.NewPublisher(
+		auditStream,
+		events.AuditSignal,
+		events.AuditKey,
+		[]herald.Option[models.AuditEntry]{
+			herald.WithRetry[models.AuditEntry](3),
+			herald.WithBackoff[models.AuditEntry](3, 500*time.Millisecond),
+		},
+	)
+	auditPub.Start()
+	defer func() { _ = auditPub.Close() }()
+	log.Println("audit publisher initialized")
 
 	// =========================================================================
 	// 8. Register Handlers and Start Server

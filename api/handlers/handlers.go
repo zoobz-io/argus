@@ -53,5 +53,7 @@ func All() []rocco.Endpoint {
 		updateNotificationStatus,
 		bulkMarkRead,
 		notificationStream,
+		// Audit
+		listAuditLog,
 	}
 }

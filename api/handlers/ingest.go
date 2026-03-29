@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"github.com/zoobz-io/argus/api/contracts"
+	"github.com/zoobz-io/argus/internal/audit"
 	"github.com/zoobz-io/rocco"
 	"github.com/zoobz-io/sum"
 )
@@ -28,11 +29,15 @@ func (r IngestResponse) Clone() IngestResponse {
 }
 
 var triggerIngest = rocco.POST[IngestRequest, IngestResponse]("/ingest", func(r *rocco.Request[IngestRequest]) (IngestResponse, error) {
+	tid := tenantID(r.Identity)
 	enqueuer := sum.MustUse[contracts.IngestEnqueuer](r)
-	job, err := enqueuer.Enqueue(r, r.Body.VersionID, tenantID(r.Identity))
+	job, err := enqueuer.Enqueue(r, r.Body.VersionID, tid)
 	if err != nil {
 		return IngestResponse{}, err
 	}
+	audit.Emit(r, "document.ingested", "document", job.ID, tid, r.Identity.ID(), map[string]any{
+		"version_id": r.Body.VersionID,
+	})
 	return IngestResponse{
 		JobID:  job.ID,
 		Status: string(job.Status),

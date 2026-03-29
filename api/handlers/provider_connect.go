@@ -9,6 +9,7 @@ import (
 
 	"github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/argus/api/wire"
+	"github.com/zoobz-io/argus/internal/audit"
 	"github.com/zoobz-io/argus/internal/oauth"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/provider"
@@ -112,6 +113,9 @@ var providerConnect = rocco.POST[wire.ConnectRequest, wire.ConnectResponse]("/pr
 		return wire.ConnectResponse{}, updateErr
 	}
 
+	audit.Emit(r, "provider.connected", "provider", providerID, tid, r.Identity.ID(), map[string]any{
+		"provider_type": string(p.Type),
+	})
 	return wire.ConnectResponse{Status: "connected"}, nil
 }).
 	WithSummary("Connect provider").
