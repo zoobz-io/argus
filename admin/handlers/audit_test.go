@@ -70,6 +70,38 @@ func TestAdminListAuditLog_WithTenantFilter(t *testing.T) {
 	rtesting.AssertStatus(t, capture, 200)
 }
 
+func TestAdminListAuditLog_AllFilters(t *testing.T) {
+	mock := &argustest.MockAdminAuditLog{
+		OnSearch: func(_ context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+			if params.ResourceType != "provider" {
+				t.Errorf("ResourceType = %q, want provider", params.ResourceType)
+			}
+			if params.ActorID != "u-1" {
+				t.Errorf("ActorID = %q, want u-1", params.ActorID)
+			}
+			if params.From == nil {
+				t.Error("From should be set")
+			}
+			if params.To == nil {
+				t.Error("To should be set")
+			}
+			if params.Limit != 50 {
+				t.Errorf("Limit = %d, want 50", params.Limit)
+			}
+			if params.Offset != 10 {
+				t.Errorf("Offset = %d, want 10", params.Offset)
+			}
+			return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}, Total: 0}, nil
+		},
+	}
+	engine := argustest.SetupAdminEngine(t, All(),
+		argustest.WithAdminAuditLog(mock),
+		argustest.WithBoundaries(wire.RegisterBoundaries),
+	)
+	capture := rtesting.ServeRequest(engine, "GET", "/audit?resource_type=provider&actor_id=u-1&from=2026-03-01T00:00:00Z&to=2026-03-31T00:00:00Z&limit=50&offset=10", nil)
+	rtesting.AssertStatus(t, capture, 200)
+}
+
 func TestAdminListAuditLog_Error(t *testing.T) {
 	mock := &argustest.MockAdminAuditLog{
 		OnSearch: func(_ context.Context, _ models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {

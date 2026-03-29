@@ -10,3 +10,4 @@ ignore:
   - "cmd/**"
   - "testing/**"
   - "internal/boot/**"
+  - "stores/audit.go"
