@@ -254,3 +254,106 @@ func TestSubscriptions_CreateDefaultSubscriptions_Error(t *testing.T) {
 	}
 	mock.AssertExpectations()
 }
+
+func TestSubscriptions_ListSubscriptions(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestSubscriptions(t, mock)
+
+	s1 := testSubscription()
+	s2 := testSubscription()
+	s2.ID = "sub-2"
+	s2.TenantID = "t-2"
+	mock.ExpectQuery().WithRows([]models.Subscription{s1, s2})
+
+	result, err := store.ListSubscriptions(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Items) != 2 {
+		t.Errorf("Items: got %d, want 2", len(result.Items))
+	}
+	mock.AssertExpectations()
+}
+
+func TestSubscriptions_ListSubscriptions_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestSubscriptions(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("db error"))
+
+	_, err := store.ListSubscriptions(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestSubscriptions_DeleteSubscription_NotFound(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestSubscriptions(t, mock)
+
+	mock.ExpectQuery().WithRows([]models.Subscription{})
+
+	err := store.DeleteSubscription(context.Background(), "t-1", "u-1", "sub-missing")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestSubscriptions_DeleteSubscription_WrongUser(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestSubscriptions(t, mock)
+
+	s := testSubscription()
+	mock.ExpectQuery().WithRows([]models.Subscription{s}) // GetSubscriptionByTenant returns sub owned by u-1
+
+	err := store.DeleteSubscription(context.Background(), "t-1", "u-wrong", "sub-1")
+	if err == nil {
+		t.Fatal("expected error for wrong user")
+	}
+	mock.AssertExpectations()
+}
+
+func TestSubscriptions_DeleteSubscription_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestSubscriptions(t, mock)
+
+	s := testSubscription()
+	mock.ExpectQuery().WithRows([]models.Subscription{s}) // GetSubscriptionByTenant
+	mock.ExpectExec().WithError(errors.New("db error"))   // Delete
+
+	err := store.DeleteSubscription(context.Background(), "t-1", "u-1", "sub-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestAdminSubscriptions_DeleteSubscription(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestSubscriptions(t, mock)
+	admin := &AdminSubscriptions{store}
+
+	mock.ExpectExec().WithResult(1, 0)
+
+	err := admin.DeleteSubscription(context.Background(), "sub-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mock.AssertExpectations()
+}
+
+func TestAdminSubscriptions_DeleteSubscription_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestSubscriptions(t, mock)
+	admin := &AdminSubscriptions{store}
+
+	mock.ExpectExec().WithError(errors.New("db error"))
+
+	err := admin.DeleteSubscription(context.Background(), "sub-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}

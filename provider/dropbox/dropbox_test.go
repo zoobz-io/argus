@@ -747,6 +747,98 @@ func TestGuessMIME_AllExtensions(t *testing.T) {
 	}
 }
 
+func TestDoJSON_Non200Response(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/test-endpoint": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, `{"error":"rate_limit"}`, http.StatusTooManyRequests)
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	client, _, err := d.httpClient(context.Background(), validCreds())
+	if err != nil {
+		t.Fatalf("httpClient: %v", err)
+	}
+
+	_, doErr := d.doJSON(context.Background(), client, server.URL+"/2/test-endpoint", map[string]string{"key": "val"})
+	if doErr == nil {
+		t.Fatal("expected error for non-200 response")
+	}
+	if !strings.Contains(doErr.Error(), "status 429") {
+		t.Errorf("error should mention status 429, got %q", doErr.Error())
+	}
+}
+
+func TestDoJSON_InvalidJSONResponse(t *testing.T) {
+	// doJSON does not parse the response body itself — it returns raw bytes.
+	// A non-200 response with invalid JSON is still reported as a status error.
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/test-endpoint": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("not json at all"))
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	client, _, err := d.httpClient(context.Background(), validCreds())
+	if err != nil {
+		t.Fatalf("httpClient: %v", err)
+	}
+
+	_, doErr := d.doJSON(context.Background(), client, server.URL+"/2/test-endpoint", map[string]string{})
+	if doErr == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !strings.Contains(doErr.Error(), "status 500") {
+		t.Errorf("error should mention status 500, got %q", doErr.Error())
+	}
+}
+
+func TestDoJSON_RequestCreationFailure(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	client, _, err := d.httpClient(context.Background(), validCreds())
+	if err != nil {
+		t.Fatalf("httpClient: %v", err)
+	}
+
+	// Use an invalid URL to trigger request creation failure.
+	_, doErr := d.doJSON(context.Background(), client, "://bad-url", map[string]string{})
+	if doErr == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+	if !strings.Contains(doErr.Error(), "creating request") {
+		t.Errorf("error should mention creating request, got %q", doErr.Error())
+	}
+}
+
+func TestFetch_ContentEndpointHTTPError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/download": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, _, err := d.Fetch(context.Background(), validCreds(), "/Documents/report.pdf")
+	if err == nil {
+		t.Fatal("expected error for 503 from content endpoint")
+	}
+	if !strings.Contains(err.Error(), "status 503") {
+		t.Errorf("error should mention 503, got %q", err.Error())
+	}
+}
+
 func TestFetch_NoMetadataHeader(t *testing.T) {
 	server := fakeServer(t, map[string]http.HandlerFunc{
 		"/oauth2/token": tokenHandler(),
