@@ -93,6 +93,53 @@ func CreateOpenSearchIndex(ctx context.Context, addr string) error {
 	return nil
 }
 
+// CreateNotificationsIndex creates the notifications index from the mapping file.
+func CreateNotificationsIndex(ctx context.Context, addr string) error {
+	mappingPath := filepath.Join(migrationsDir(), "opensearch", "002_notifications.json")
+	mapping, err := os.ReadFile(mappingPath)
+	if err != nil {
+		return fmt.Errorf("reading notifications index mapping: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/notifications", addr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(mapping))
+	if err != nil {
+		return fmt.Errorf("creating notifications index request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("creating notifications index: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("creating notifications index: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// RefreshNotificationsIndex forces OpenSearch to make all indexed notifications searchable.
+func RefreshNotificationsIndex(ctx context.Context, t *testing.T, addr string) {
+	t.Helper()
+	url := fmt.Sprintf("%s/notifications/_refresh", addr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		t.Fatalf("creating notifications refresh request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("refreshing notifications index: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("notifications refresh failed: status %d", resp.StatusCode)
+	}
+}
+
 // RefreshOpenSearchIndex forces OpenSearch to make all indexed data searchable.
 func RefreshOpenSearchIndex(ctx context.Context, t *testing.T, addr string) {
 	t.Helper()

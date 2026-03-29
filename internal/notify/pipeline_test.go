@@ -4,6 +4,7 @@ package notify
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -87,5 +88,34 @@ func TestPipeline_FullIntegration(t *testing.T) {
 	// Verify hint stage
 	if !capture.WaitForCount(1, time.Second) {
 		t.Fatal("expected hint signal to be emitted")
+	}
+}
+
+func TestPipeline_IndexError_PropagatesError(t *testing.T) {
+	indexer := &mockNotifyIndexer{
+		OnIndex: func(_ context.Context, _ *models.Notification) error {
+			return errors.New("index unavailable")
+		},
+	}
+
+	ctx := setupPipelineRegistry(t, indexer)
+	pipeline := New()
+
+	item := &FanOutItem{
+		Notification: &models.Notification{
+			TenantID: "t-1",
+			Type:     models.NotificationIngestCompleted,
+			Message:  "Document ingestion completed",
+		},
+		Subscription: &models.Subscription{
+			ID:     "sub-1",
+			UserID: "u-1",
+		},
+		EventID: "evt-1",
+	}
+
+	_, err := pipeline.Process(ctx, item)
+	if err == nil {
+		t.Fatal("expected error from index stage to propagate through pipeline")
 	}
 }

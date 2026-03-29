@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"cloud.google.com/go/storage"
+	"google.golang.org/api/option"
+
 	"github.com/zoobz-io/argus/provider"
 )
 
@@ -496,6 +499,231 @@ func TestCredentials_ExpiryIsZero(t *testing.T) {
 	}
 	if creds.Expired() {
 		t.Error("zero-expiry credentials should not be expired")
+	}
+}
+
+// --- error path tests ---
+
+func TestList_MissingExtraFields(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{}
+	_, _, err := g.List(context.Background(), creds, "")
+	if err == nil {
+		t.Fatal("expected error for missing extra fields")
+	}
+	if !strings.Contains(err.Error(), "credentials missing extra fields") {
+		t.Errorf("error: got %q", err.Error())
+	}
+}
+
+func TestChanges_NilCreds(t *testing.T) {
+	g := New()
+	_, _, _, err := g.Changes(context.Background(), nil, "docs/", "2025-06-01T12:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for nil credentials")
+	}
+	if !strings.Contains(err.Error(), "credentials required") {
+		t.Errorf("error: got %q", err.Error())
+	}
+}
+
+func TestChanges_MissingBucket(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{
+			"credentials_json": fakeServiceAccountJSON(),
+		},
+	}
+	_, _, _, err := g.Changes(context.Background(), creds, "", "2025-06-01T12:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for missing bucket")
+	}
+	if !strings.Contains(err.Error(), "bucket not specified") {
+		t.Errorf("error: got %q", err.Error())
+	}
+}
+
+func TestFetch_MissingBucket(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{
+			"credentials_json": fakeServiceAccountJSON(),
+		},
+	}
+	_, _, _, err := g.Fetch(context.Background(), creds, "docs/report.pdf")
+	if err == nil {
+		t.Fatal("expected error for missing bucket")
+	}
+	if !strings.Contains(err.Error(), "bucket not specified") {
+		t.Errorf("error: got %q", err.Error())
+	}
+}
+
+func TestFetch_MissingCredentialsJSON(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{
+			"bucket": "test-bucket",
+		},
+	}
+	_, _, _, err := g.Fetch(context.Background(), creds, "docs/report.pdf")
+	if err == nil {
+		t.Fatal("expected error for missing credentials_json")
+	}
+	if !strings.Contains(err.Error(), "credentials_json") {
+		t.Errorf("error: got %q", err.Error())
+	}
+}
+
+func TestFetch_MissingExtraFields(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{}
+	_, _, _, err := g.Fetch(context.Background(), creds, "key")
+	if err == nil {
+		t.Fatal("expected error for missing extra fields")
+	}
+}
+
+func TestChanges_MissingExtraFields(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{}
+	_, _, _, err := g.Changes(context.Background(), creds, "", "2025-06-01T12:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for missing extra fields")
+	}
+}
+
+func TestChanges_MissingCredentialsJSON(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{
+			"bucket": "test-bucket",
+		},
+	}
+	_, _, _, err := g.Changes(context.Background(), creds, "", "2025-06-01T12:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for missing credentials_json")
+	}
+}
+
+func TestAttrsToEntry_NestedPrefix(t *testing.T) {
+	// Test prefix with nested path like "a/b/c/".
+	entry := attrsToEntry(&storage.ObjectAttrs{Prefix: "a/b/c/"})
+	if !entry.IsFolder {
+		t.Error("expected folder")
+	}
+	if entry.Name != "c" {
+		t.Errorf("name: got %q, want %q", entry.Name, "c")
+	}
+}
+
+func TestClientClosingReader_ReadError(t *testing.T) {
+	// Test the Close method when the reader's Close returns an error.
+	errReader := &failingReadCloser{err: fmt.Errorf("read close failed")}
+	client, clientErr := storage.NewClient(context.Background(), option.WithoutAuthentication())
+	if clientErr != nil {
+		t.Fatalf("creating test client: %v", clientErr)
+	}
+
+	r := &clientClosingReader{
+		ReadCloser: errReader,
+		client:     client,
+	}
+	err := r.Close()
+	if err == nil {
+		t.Fatal("expected error from Close")
+	}
+	if !strings.Contains(err.Error(), "read close failed") {
+		t.Errorf("error: got %q", err.Error())
+	}
+}
+
+type failingReadCloser struct {
+	err error
+}
+
+func (f *failingReadCloser) Read(_ []byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (f *failingReadCloser) Close() error {
+	return f.err
+}
+
+func TestChanges_SkipsPrefixes(t *testing.T) {
+	// Test that prefix-only results (pseudo-folders) are skipped in Changes.
+	oldTime := time.Now().UTC().Add(-2 * time.Hour)
+	newTime := time.Now().UTC().Add(-30 * time.Minute)
+	syncTime := time.Now().UTC().Add(-time.Hour)
+
+	server := fakeGCSServer(t, map[string]http.HandlerFunc{
+		"/storage/v1/b/test-bucket/o": func(w http.ResponseWriter, _ *http.Request) {
+			jsonResponse(w, mustJSON(map[string]any{
+				"kind": "storage#objects",
+				"items": []map[string]any{
+					{
+						"name":        "docs/updated.txt",
+						"contentType": "text/plain",
+						"size":        "100",
+						"md5Hash":     "abc123==",
+						"updated":     newTime.Format(time.RFC3339Nano),
+						"timeCreated": oldTime.Format(time.RFC3339Nano),
+					},
+				},
+				"prefixes": []string{"docs/subfolder/"},
+			}))
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	changes, _, _, err := g.Changes(context.Background(), validCreds(), "docs/", syncTime.Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Only the file should be in changes, not the prefix.
+	for _, c := range changes {
+		if strings.HasSuffix(c.Ref, "/") {
+			t.Errorf("prefix should be filtered out, got ref %q", c.Ref)
+		}
+	}
+}
+
+func TestClientClosingReader_ClientErrorOnly(t *testing.T) {
+	// Test Close when reader succeeds but client Close fails.
+	okReader := io.NopCloser(strings.NewReader(""))
+	r := &clientClosingReader{
+		ReadCloser: okReader,
+		client:     nil, // will panic if called - we test the logic path
+	}
+	// We can't easily make a storage.Client that fails on Close,
+	// but we can test with a real client.
+	client, clientErr := storage.NewClient(context.Background(), option.WithoutAuthentication())
+	if clientErr != nil {
+		t.Fatalf("creating test client: %v", clientErr)
+	}
+	r.client = client
+
+	// Both close without error.
+	if err := r.Close(); err != nil {
+		t.Errorf("unexpected Close error: %v", err)
+	}
+}
+
+func TestList_InvalidCredentialsJSON(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{
+			"bucket":          "test-bucket",
+			"credentials_json": "not-valid-base64!!!",
+		},
+	}
+	_, _, err := g.List(context.Background(), creds, "")
+	if err == nil {
+		t.Fatal("expected error for invalid base64 credentials")
+	}
+	if !strings.Contains(err.Error(), "decoding credentials_json") {
+		t.Errorf("error: got %q", err.Error())
 	}
 }
 

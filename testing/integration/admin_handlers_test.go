@@ -245,6 +245,100 @@ func TestAdmin_Documents_Delete(t *testing.T) {
 	rtesting.AssertStatus(t, getDoc, 404)
 }
 
+// =============================================================================
+// Users
+// =============================================================================
+
+func TestAdmin_Users_List(t *testing.T) {
+	list := rtesting.ServeRequest(testAdminEngine, "GET", "/users", nil)
+	rtesting.AssertStatus(t, list, 200)
+
+	var resp adminwire.AdminUserListResponse
+	if err := list.DecodeJSON(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// At least the test user created in InitEngines should be present.
+	if len(resp.Users) == 0 {
+		t.Error("expected at least one user")
+	}
+}
+
+func TestAdmin_Users_CRUD(t *testing.T) {
+	// Create a tenant to own the user.
+	tenantBody := adminwire.AdminTenantCreateRequest{Name: "User Admin", Slug: "user-admin-test"}
+	tenantCreate := rtesting.ServeRequest(testAdminEngine, "POST", "/tenants", tenantBody)
+	rtesting.AssertStatus(t, tenantCreate, 201)
+
+	var tenant adminwire.AdminTenantResponse
+	tenantCreate.DecodeJSON(&tenant)
+
+	// Create user.
+	userBody := adminwire.AdminUserCreateRequest{
+		TenantID:    tenant.ID,
+		ExternalID:  "ext-admin-crud-user",
+		Email:       "admin-crud@example.com",
+		DisplayName: "Admin CRUD User",
+		Role:        "viewer",
+	}
+	create := rtesting.ServeRequest(testAdminEngine, "POST", "/users", userBody)
+	rtesting.AssertStatus(t, create, 201)
+
+	var created adminwire.AdminUserResponse
+	if err := create.DecodeJSON(&created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	if created.ID == "" || created.Email != "admin-crud@example.com" {
+		t.Errorf("create mismatch: %+v", created)
+	}
+
+	// Get.
+	get := rtesting.ServeRequest(testAdminEngine, "GET", "/users/"+created.ID, nil)
+	rtesting.AssertStatus(t, get, 200)
+
+	var got adminwire.AdminUserResponse
+	if err := get.DecodeJSON(&got); err != nil {
+		t.Fatalf("decode get: %v", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("get mismatch: %+v", got)
+	}
+
+	// Update.
+	newEmail := "updated@example.com"
+	newName := "Updated User"
+	updateBody := adminwire.AdminUserUpdateRequest{
+		Email:       &newEmail,
+		DisplayName: &newName,
+	}
+	update := rtesting.ServeRequest(testAdminEngine, "PUT", "/users/"+created.ID, updateBody)
+	rtesting.AssertStatus(t, update, 200)
+
+	var updated adminwire.AdminUserResponse
+	if err := update.DecodeJSON(&updated); err != nil {
+		t.Fatalf("decode update: %v", err)
+	}
+	if updated.Email != "updated@example.com" || updated.DisplayName != "Updated User" {
+		t.Errorf("update mismatch: %+v", updated)
+	}
+
+	// Delete.
+	del := rtesting.ServeRequest(testAdminEngine, "DELETE", "/users/"+created.ID, nil)
+	rtesting.AssertStatus(t, del, 204)
+
+	// Verify gone.
+	getAfter := rtesting.ServeRequest(testAdminEngine, "GET", "/users/"+created.ID, nil)
+	rtesting.AssertStatus(t, getAfter, 404)
+}
+
+func TestAdmin_Users_NotFound(t *testing.T) {
+	get := rtesting.ServeRequest(testAdminEngine, "GET", "/users/nonexistent", nil)
+	rtesting.AssertStatus(t, get, 404)
+}
+
+// =============================================================================
+// Documents & Versions
+// =============================================================================
+
 func TestAdmin_Documents_NotFound(t *testing.T) {
 	get := rtesting.ServeRequest(testAdminEngine, "GET", "/documents/nonexistent", nil)
 	rtesting.AssertStatus(t, get, 404)

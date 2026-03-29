@@ -92,6 +92,11 @@ func InitStores(ctx context.Context, infra *Infra) error {
 	sum.Register[apicontracts.DocumentVersionSearch](k, testStores.DocumentVersionSearch)
 	sum.Register[apicontracts.Topics](k, testStores.Topics)
 	sum.Register[apicontracts.Tags](k, testStores.Tags)
+	sum.Register[apicontracts.Users](k, testStores.Users)
+	sum.Register[apicontracts.Notifications](k, testStores.Notifications)
+	sum.Register[apicontracts.Subscriptions](k, testStores.Subscriptions)
+	sum.Register[apicontracts.JobReader](k, testStores.Jobs)
+	sum.Register[apicontracts.IngestEnqueuer](k, ingest.NewEnqueuer())
 	sum.Register[apicontracts.QueryEmbedder](k, &stubQueryEmbedder{dimensions: 1536})
 
 	sum.Register[admincontracts.Tenants](k, testStores.Tenants)
@@ -101,6 +106,8 @@ func InitStores(ctx context.Context, infra *Infra) error {
 	sum.Register[admincontracts.DocumentVersions](k, testStores.DocumentVersions)
 	sum.Register[admincontracts.Topics](k, testStores.Topics)
 	sum.Register[admincontracts.Tags](k, testStores.Tags)
+	sum.Register[admincontracts.Users](k, testStores.Users)
+	sum.Register[admincontracts.Subscriptions](k, testStores.AdminSubscriptions)
 
 	// Internal contracts (pipeline).
 	sum.Register[intcontracts.IngestVersions](k, testStores.DocumentVersions)
@@ -142,6 +149,9 @@ func InitStores(ctx context.Context, infra *Infra) error {
 	sum.NewBoundary[models.WatchedPath](k)
 	sum.NewBoundary[models.Document](k)
 	sum.NewBoundary[models.DocumentVersion](k)
+	sum.NewBoundary[models.User](k)
+	sum.NewBoundary[models.Subscription](k)
+	sum.NewBoundary[models.Job](k)
 
 	// Wire boundaries (needed for handler OnSend).
 	wire.RegisterBoundaries(k)

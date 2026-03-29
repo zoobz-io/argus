@@ -500,6 +500,183 @@ func TestFetch_NotFound(t *testing.T) {
 	}
 }
 
+// --- error path tests ---
+
+func TestList_InvalidXMLResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte("not xml"))
+	}))
+	defer server.Close()
+
+	a := New()
+	_, _, err := a.List(context.Background(), validCreds(server.URL), "")
+	if err == nil {
+		t.Fatal("expected error for invalid XML")
+	}
+	if !strings.Contains(err.Error(), "decoding list response") {
+		t.Errorf("error should mention decoding, got %q", err.Error())
+	}
+}
+
+func TestChanges_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	a := New()
+	_, _, _, err := a.Changes(context.Background(), validCreds(server.URL), "", "2025-02-01T00:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for server error")
+	}
+	if !strings.Contains(err.Error(), "503") {
+		t.Errorf("error should mention 503, got %q", err.Error())
+	}
+}
+
+func TestChanges_InvalidXMLResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte("not xml"))
+	}))
+	defer server.Close()
+
+	a := New()
+	_, _, _, err := a.Changes(context.Background(), validCreds(server.URL), "", "2025-02-01T00:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for invalid XML")
+	}
+	if !strings.Contains(err.Error(), "decoding changes response") {
+		t.Errorf("error should mention decoding, got %q", err.Error())
+	}
+}
+
+func TestChanges_MissingContainer(t *testing.T) {
+	a := New()
+	creds := &provider.Credentials{
+		AccessToken:  "acct",
+		RefreshToken: "dGVzdGtleQ==",
+	}
+	_, _, _, err := a.Changes(context.Background(), creds, "", "2025-02-01T00:00:00Z")
+	if err == nil {
+		t.Fatal("expected error for missing container")
+	}
+	if !strings.Contains(err.Error(), "missing container") {
+		t.Errorf("error should mention missing container, got %q", err.Error())
+	}
+}
+
+func TestFetch_MissingContainer(t *testing.T) {
+	a := New()
+	creds := &provider.Credentials{
+		AccessToken:  "acct",
+		RefreshToken: "dGVzdGtleQ==",
+	}
+	_, _, _, err := a.Fetch(context.Background(), creds, "blob.txt")
+	if err == nil {
+		t.Fatal("expected error for missing container")
+	}
+	if !strings.Contains(err.Error(), "missing container") {
+		t.Errorf("error should mention missing container, got %q", err.Error())
+	}
+}
+
+func TestFetch_MissingAccount(t *testing.T) {
+	a := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{"container": "c"},
+	}
+	_, _, _, err := a.Fetch(context.Background(), creds, "blob.txt")
+	if err == nil {
+		t.Fatal("expected error for missing account")
+	}
+	if !strings.Contains(err.Error(), "missing account") {
+		t.Errorf("error should mention missing account, got %q", err.Error())
+	}
+}
+
+func TestChanges_Pagination(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		w.Header().Set("Content-Type", "application/xml")
+		if n == 1 {
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>new1.txt</Name>
+      <Properties>
+        <Last-Modified>Sat, 01 Mar 2025 12:00:00 GMT</Last-Modified>
+        <Content-Type>text/plain</Content-Type>
+        <Content-Length>100</Content-Length>
+      </Properties>
+    </Blob>
+  </Blobs>
+  <NextMarker>marker-2</NextMarker>
+</EnumerationResults>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>new2.txt</Name>
+      <Properties>
+        <Last-Modified>Sat, 01 Mar 2025 14:00:00 GMT</Last-Modified>
+        <Content-Type>text/plain</Content-Type>
+        <Content-Length>200</Content-Length>
+      </Properties>
+    </Blob>
+  </Blobs>
+</EnumerationResults>`))
+	}))
+	defer server.Close()
+
+	a := New()
+	changes, _, _, err := a.Changes(context.Background(), validCreds(server.URL), "", "2025-02-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 changes across pages, got %d", len(changes))
+	}
+	if calls.Load() != 2 {
+		t.Errorf("expected 2 HTTP calls, got %d", calls.Load())
+	}
+}
+
+func TestEscapeRefPath(t *testing.T) {
+	tests := []struct{ input, want string }{
+		{"docs/report.pdf", "docs/report.pdf"},
+		{"docs/my file.pdf", "docs/my%20file.pdf"},
+		{"report.pdf", "report.pdf"},
+	}
+	for _, tt := range tests {
+		if got := escapeRefPath(tt.input); got != tt.want {
+			t.Errorf("escapeRefPath(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestResolveEndpoint_TrailingSlash(t *testing.T) {
+	creds := &provider.Credentials{
+		AccessToken: "myaccount",
+		Extra: map[string]string{
+			"container": "c",
+			"endpoint":  "http://localhost:10000/devstoreaccount1/",
+		},
+	}
+	endpoint, _, err := New().resolveEndpoint(creds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.HasSuffix(endpoint, "/") {
+		t.Errorf("endpoint should not have trailing slash, got %q", endpoint)
+	}
+}
+
 func TestSignRequest_InvalidKey(t *testing.T) {
 	a := New()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://example.com", nil)

@@ -48,3 +48,46 @@ func TestAssignStage_SetsAllFields(t *testing.T) {
 		t.Error("expected CreatedAt to be set to current time")
 	}
 }
+
+func TestAssignStage_DeterministicID(t *testing.T) {
+	stage := newAssignStage()
+
+	makeItem := func() *FanOutItem {
+		return &FanOutItem{
+			Notification: &models.Notification{
+				TenantID: "t-1",
+				Type:     models.NotificationIngestCompleted,
+				Message:  "test",
+			},
+			Subscription: &models.Subscription{
+				ID:     "sub-1",
+				UserID: "u-1",
+			},
+			EventID: "evt-1",
+		}
+	}
+
+	r1, err := stage.Process(context.Background(), makeItem())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	r2, err := stage.Process(context.Background(), makeItem())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if r1.Notification.ID != r2.Notification.ID {
+		t.Errorf("same inputs should produce same ID: got %q and %q", r1.Notification.ID, r2.Notification.ID)
+	}
+
+	// Different event ID should produce different notification ID.
+	item3 := makeItem()
+	item3.EventID = "evt-2"
+	r3, err := stage.Process(context.Background(), item3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r1.Notification.ID == r3.Notification.ID {
+		t.Error("different event IDs should produce different notification IDs")
+	}
+}

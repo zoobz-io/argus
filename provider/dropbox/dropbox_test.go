@@ -555,3 +555,217 @@ func TestFetch_HTTPError(t *testing.T) {
 		t.Errorf("error should mention 404, got %q", err.Error())
 	}
 }
+
+// --- error path tests ---
+
+func TestList_APIError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/list_folder": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "server error", http.StatusInternalServerError)
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, err := d.List(context.Background(), validCreds(), "/Documents")
+	if err == nil {
+		t.Fatal("expected error for API failure")
+	}
+	if !strings.Contains(err.Error(), "listing files") {
+		t.Errorf("error should mention listing files, got %q", err.Error())
+	}
+}
+
+func TestList_InvalidJSON(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/list_folder": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("not json"))
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, err := d.List(context.Background(), validCreds(), "/Documents")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "decoding list response") {
+		t.Errorf("error should mention decoding, got %q", err.Error())
+	}
+}
+
+func TestList_InvalidPath(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, err := d.List(context.Background(), validCreds(), "/../../../etc")
+	if err == nil {
+		t.Fatal("expected error for traversal path")
+	}
+	if !strings.Contains(err.Error(), "traversal") {
+		t.Errorf("error should mention traversal, got %q", err.Error())
+	}
+}
+
+func TestChanges_APIError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/list_folder/continue": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "server error", http.StatusInternalServerError)
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, _, err := d.Changes(context.Background(), validCreds(), "/Documents", "cursor-1")
+	if err == nil {
+		t.Fatal("expected error for API failure")
+	}
+	if !strings.Contains(err.Error(), "listing changes") {
+		t.Errorf("error should mention listing changes, got %q", err.Error())
+	}
+}
+
+func TestChanges_InvalidJSON(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/list_folder/continue": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("not json"))
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, _, err := d.Changes(context.Background(), validCreds(), "/Documents", "cursor-1")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "decoding changes response") {
+		t.Errorf("error should mention decoding, got %q", err.Error())
+	}
+}
+
+func TestChanges_InitialSync_CursorError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/list_folder/get_latest_cursor": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, _, err := d.Changes(context.Background(), validCreds(), "/Documents", "")
+	if err == nil {
+		t.Fatal("expected error for cursor failure")
+	}
+	if !strings.Contains(err.Error(), "getting initial cursor") {
+		t.Errorf("error should mention initial cursor, got %q", err.Error())
+	}
+}
+
+func TestChanges_InitialSync_InvalidCursorJSON(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/list_folder/get_latest_cursor": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("not json"))
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, _, err := d.Changes(context.Background(), validCreds(), "/Documents", "")
+	if err == nil {
+		t.Fatal("expected error for invalid cursor JSON")
+	}
+	if !strings.Contains(err.Error(), "getting initial cursor") {
+		t.Errorf("error should mention initial cursor, got %q", err.Error())
+	}
+}
+
+func TestFetch_InvalidMetadataHeader(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/download": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Dropbox-API-Result", "not json")
+			_, _ = w.Write([]byte("file content"))
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	_, _, _, err := d.Fetch(context.Background(), validCreds(), "/Documents/report.pdf")
+	if err == nil {
+		t.Fatal("expected error for invalid metadata header")
+	}
+	if !strings.Contains(err.Error(), "decoding download metadata") {
+		t.Errorf("error should mention decoding metadata, got %q", err.Error())
+	}
+}
+
+func TestExchange_Failure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "invalid grant", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	d := &Dropbox{
+		oauth: &oauth2.Config{
+			ClientID: "id", ClientSecret: "secret",
+			Endpoint: oauth2.Endpoint{TokenURL: server.URL},
+		},
+	}
+
+	_, err := d.Exchange(context.Background(), "bad-code", "https://app.example.com/callback")
+	if err == nil {
+		t.Fatal("expected error for bad exchange")
+	}
+	if !strings.Contains(err.Error(), "exchanging auth code") {
+		t.Errorf("error should mention exchange, got %q", err.Error())
+	}
+}
+
+func TestGuessMIME_AllExtensions(t *testing.T) {
+	tests := []struct{ input, expected string }{
+		{"file.doc", "application/msword"},
+		{"file.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+		{"file.xls", "application/vnd.ms-excel"},
+		{"file.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+	}
+	for _, tt := range tests {
+		if got := guessMIME(tt.input); got != tt.expected {
+			t.Errorf("guessMIME(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+func TestFetch_NoMetadataHeader(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/oauth2/token": tokenHandler(),
+		"/2/files/download": func(w http.ResponseWriter, _ *http.Request) {
+			// No Dropbox-API-Result header at all.
+			_, _ = w.Write([]byte("file content"))
+		},
+	})
+	defer server.Close()
+
+	d := newTestProvider(t, server)
+	rc, meta, _, err := d.Fetch(context.Background(), validCreds(), "/Documents/report.pdf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+
+	// When no header, metadata fields are zero-value.
+	if meta.Name != "" {
+		t.Errorf("expected empty name, got %q", meta.Name)
+	}
+}

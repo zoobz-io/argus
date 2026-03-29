@@ -380,3 +380,147 @@ func TestFetcher_HandleFetch_JobCreateError(t *testing.T) {
 		t.Fatal("expected error from job creation")
 	}
 }
+
+func TestFetcher_HandleFetch_GetProviderError(t *testing.T) {
+	store := &mockFetchStore{
+		onGetProvider: func(_ context.Context, _ string) (*models.Provider, error) {
+			return nil, errors.New("provider not found")
+		},
+	}
+
+	prov := &mockFetchProvider{providerType: "test_provider"}
+	bucket := &mockBucket{}
+	fetcher := newTestFetcher(store, prov, &provider.Credentials{AccessToken: "test-token"}, bucket)
+
+	msg := events.FetchMessage{
+		VersionID:  "ver-1",
+		DocumentID: "doc-1",
+		ProviderID: "p-1",
+		TenantID:   "t-1",
+		Ref:        "ref-1",
+		ObjectKey:  "objects/t-1/doc-1",
+	}
+
+	err := fetcher.HandleFetch(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected error from GetProvider")
+	}
+}
+
+func TestFetcher_HandleFetch_RegistryLookupError(t *testing.T) {
+	store := &mockFetchStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "unknown_provider"}, nil
+		},
+	}
+
+	prov := &mockFetchProvider{providerType: "test_provider"}
+	bucket := &mockBucket{}
+	fetcher := newTestFetcher(store, prov, &provider.Credentials{AccessToken: "test-token"}, bucket)
+
+	msg := events.FetchMessage{
+		VersionID:  "ver-1",
+		DocumentID: "doc-1",
+		ProviderID: "p-1",
+		TenantID:   "t-1",
+		Ref:        "ref-1",
+		ObjectKey:  "objects/t-1/doc-1",
+	}
+
+	err := fetcher.HandleFetch(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected error from registry lookup")
+	}
+}
+
+func TestFetcher_HandleFetch_CredentialLoadError(t *testing.T) {
+	store := &mockFetchStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+	}
+
+	provStore := &mockProviderStore{
+		onGetProvider: func(_ context.Context, _ string) (*models.Provider, error) {
+			return nil, errors.New("cred store error")
+		},
+	}
+
+	prov := &mockFetchProvider{providerType: "test_provider"}
+	registry := provider.NewRegistry()
+	registry.Register(prov)
+	credMgr := NewCredentialManager(provStore)
+	bucket := &mockBucket{}
+
+	fetcher := NewFetcher(store, credMgr, registry, bucket)
+
+	msg := events.FetchMessage{
+		VersionID:  "ver-1",
+		DocumentID: "doc-1",
+		ProviderID: "p-1",
+		TenantID:   "t-1",
+		Ref:        "ref-1",
+		ObjectKey:  "objects/t-1/doc-1",
+	}
+
+	err := fetcher.HandleFetch(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected error from credential loading")
+	}
+}
+
+func TestFetcher_HandleFetch_CredentialUpdateError(t *testing.T) {
+	content := []byte("data")
+
+	refreshedCreds := &provider.Credentials{
+		AccessToken:  "new-token",
+		RefreshToken: "new-refresh",
+	}
+
+	provStore := &mockProviderStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Credentials: `{"access_token":"old"}`}, nil
+		},
+		onUpdateProviderCredentials: func(_ context.Context, _, _ string) error {
+			return errors.New("creds persist error")
+		},
+	}
+
+	store := &mockFetchStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+	}
+
+	prov := &mockFetchProvider{
+		providerType: "test_provider",
+		onFetch: func(_ context.Context, _ *provider.Credentials, _ string) (io.ReadCloser, *provider.EntryMeta, *provider.Credentials, error) {
+			return io.NopCloser(bytes.NewReader(content)), &provider.EntryMeta{
+				Name:     "file.txt",
+				MimeType: "text/plain",
+				Size:     int64(len(content)),
+			}, refreshedCreds, nil
+		},
+	}
+
+	registry := provider.NewRegistry()
+	registry.Register(prov)
+	credMgr := NewCredentialManager(provStore)
+	bucket := &mockBucket{}
+
+	fetcher := NewFetcher(store, credMgr, registry, bucket)
+
+	msg := events.FetchMessage{
+		VersionID:  "ver-1",
+		DocumentID: "doc-1",
+		ProviderID: "p-1",
+		TenantID:   "t-1",
+		Ref:        "ref-1",
+		ObjectKey:  "objects/t-1/doc-1",
+	}
+
+	err := fetcher.HandleFetch(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected error from credential update")
+	}
+}

@@ -541,3 +541,438 @@ func TestSyncer_PollAll_Empty(t *testing.T) {
 	syncer := NewSyncer(store, nil, nil, time.Minute)
 	syncer.pollAll(context.Background())
 }
+
+func TestSyncer_PollPath_GetProviderError(t *testing.T) {
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, _ string) (*models.Provider, error) {
+			return nil, errors.New("provider not found")
+		},
+	}
+
+	syncer := newTestSyncer(store, &mockProvider{providerType: "test_provider"}, nil)
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err == nil {
+		t.Fatal("expected error from GetProvider")
+	}
+}
+
+func TestSyncer_PollPath_RegistryLookupError(t *testing.T) {
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "unknown_provider"}, nil
+		},
+	}
+
+	// Registry has "test_provider" but store returns "unknown_provider".
+	syncer := newTestSyncer(store, &mockProvider{providerType: "test_provider"}, nil)
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err == nil {
+		t.Fatal("expected error from registry lookup")
+	}
+}
+
+func TestSyncer_PollPath_UpdateSyncStateError(t *testing.T) {
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onUpdateSyncState: func(_ context.Context, _ string, _ *string) error {
+			return errors.New("db write error")
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return nil, "new-token", nil, nil
+		},
+	}
+
+	syncer := newTestSyncer(store, prov, &provider.Credentials{AccessToken: "test-token"})
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err == nil {
+		t.Fatal("expected error from UpdateSyncState")
+	}
+}
+
+func TestSyncer_PollPath_CredentialUpdateError(t *testing.T) {
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+	}
+
+	refreshedCreds := &provider.Credentials{AccessToken: "new-token"}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return nil, "", refreshedCreds, nil
+		},
+	}
+
+	provStore := &mockProviderStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Credentials: `{"access_token":"old"}`}, nil
+		},
+		onUpdateProviderCredentials: func(_ context.Context, _, _ string) error {
+			return errors.New("creds persist error")
+		},
+	}
+
+	registry := provider.NewRegistry()
+	registry.Register(prov)
+	credMgr := NewCredentialManager(provStore)
+
+	syncer := NewSyncer(store, credMgr, registry, time.Minute)
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err == nil {
+		t.Fatal("expected error from credential update")
+	}
+}
+
+func TestSyncer_PollPath_DeletedChangeSkipped(t *testing.T) {
+	var versionCreated bool
+	syncToken := "token-1"
+
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onCreateDocumentVersion: func(_ context.Context, _ *models.DocumentVersion) (*models.DocumentVersion, error) {
+			versionCreated = true
+			return nil, nil
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return []provider.Change{
+				{
+					Ref:  "file-ref-1",
+					Type: provider.ChangeDeleted,
+				},
+			}, "token-2", nil, nil
+		},
+	}
+
+	syncer := newTestSyncer(store, prov, &provider.Credentials{AccessToken: "test-token"})
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if versionCreated {
+		t.Error("should not create version for deleted change")
+	}
+}
+
+func TestSyncer_PollPath_NilEntrySkipped(t *testing.T) {
+	var versionCreated bool
+	syncToken := "token-1"
+
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onCreateDocumentVersion: func(_ context.Context, _ *models.DocumentVersion) (*models.DocumentVersion, error) {
+			versionCreated = true
+			return nil, nil
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return []provider.Change{
+				{
+					Ref:   "file-ref-1",
+					Type:  provider.ChangeCreated,
+					Entry: nil, // nil entry
+				},
+			}, "token-2", nil, nil
+		},
+	}
+
+	syncer := newTestSyncer(store, prov, &provider.Credentials{AccessToken: "test-token"})
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if versionCreated {
+		t.Error("should not create version for nil entry")
+	}
+}
+
+func TestSyncer_ProcessChange_GetDocumentByExternalIDError(t *testing.T) {
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onGetDocumentByExternalID: func(_ context.Context, _, _ string) (*models.Document, error) {
+			return nil, errors.New("db lookup error")
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return []provider.Change{
+				{
+					Ref:  "file-ref-1",
+					Type: provider.ChangeCreated,
+					Entry: &provider.Entry{
+						Ref:      "file-ref-1",
+						Name:     "report.pdf",
+						MimeType: "application/pdf",
+					},
+				},
+			}, "", nil, nil
+		},
+	}
+
+	syncer := newTestSyncer(store, prov, &provider.Credentials{AccessToken: "test-token"})
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	// pollPath logs processChange errors but does not return them.
+	// Verify it does not panic.
+	err := syncer.pollPath(context.Background(), wp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSyncer_ProcessChange_CreateDocumentError(t *testing.T) {
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onGetDocumentByExternalID: func(_ context.Context, _, _ string) (*models.Document, error) {
+			return nil, nil // Not found.
+		},
+		onCreateDocument: func(_ context.Context, _ *models.Document) (*models.Document, error) {
+			return nil, errors.New("db create error")
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return []provider.Change{
+				{
+					Ref:  "file-ref-1",
+					Type: provider.ChangeCreated,
+					Entry: &provider.Entry{
+						Ref:      "file-ref-1",
+						Name:     "report.pdf",
+						MimeType: "application/pdf",
+					},
+				},
+			}, "", nil, nil
+		},
+	}
+
+	syncer := newTestSyncer(store, prov, &provider.Credentials{AccessToken: "test-token"})
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSyncer_ProcessChange_CreateDocumentVersionError(t *testing.T) {
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onGetDocumentByExternalID: func(_ context.Context, _, _ string) (*models.Document, error) {
+			return nil, nil // Not found.
+		},
+		onCreateDocument: func(_ context.Context, doc *models.Document) (*models.Document, error) {
+			return doc, nil
+		},
+		onCreateDocumentVersion: func(_ context.Context, _ *models.DocumentVersion) (*models.DocumentVersion, error) {
+			return nil, errors.New("db version error")
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return []provider.Change{
+				{
+					Ref:  "file-ref-1",
+					Type: provider.ChangeCreated,
+					Entry: &provider.Entry{
+						Ref:         "file-ref-1",
+						Name:        "report.pdf",
+						MimeType:    "application/pdf",
+						ContentHash: "hash-new",
+					},
+				},
+			}, "", nil, nil
+		},
+	}
+
+	syncer := newTestSyncer(store, prov, &provider.Credentials{AccessToken: "test-token"})
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSyncer_ProcessChange_ExistingDocNewVersion(t *testing.T) {
+	var versionCreated bool
+	syncToken := "token-1"
+
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onGetDocumentByExternalID: func(_ context.Context, _, _ string) (*models.Document, error) {
+			return &models.Document{ID: "doc-1", ExternalID: "ref-1", ObjectKey: "objects/t-1/doc-1"}, nil
+		},
+		onGetLatestVersion: func(_ context.Context, _ string) (*models.DocumentVersion, error) {
+			return &models.DocumentVersion{ID: "ver-1", ContentHash: "old-hash"}, nil
+		},
+		onCreateDocumentVersion: func(_ context.Context, ver *models.DocumentVersion) (*models.DocumentVersion, error) {
+			versionCreated = true
+			return ver, nil
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return []provider.Change{
+				{
+					Ref:  "ref-1",
+					Type: provider.ChangeModified,
+					Entry: &provider.Entry{
+						Ref:         "ref-1",
+						Name:        "report.pdf",
+						MimeType:    "application/pdf",
+						ContentHash: "new-hash",
+					},
+				},
+			}, "token-2", nil, nil
+		},
+	}
+
+	syncer := newTestSyncer(store, prov, &provider.Credentials{AccessToken: "test-token"})
+
+	wp := &models.WatchedPath{
+		ID:         "wp-1",
+		TenantID:   "t-1",
+		ProviderID: "p-1",
+		Path:       "/docs",
+		SyncState:  &syncToken,
+	}
+
+	err := syncer.pollPath(context.Background(), wp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !versionCreated {
+		t.Error("expected new version to be created for changed content hash")
+	}
+}
+
+func TestSyncer_PollAll_PollPathError_DoesNotCrash(t *testing.T) {
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onListActiveWatchedPaths: func(_ context.Context) ([]*models.WatchedPath, error) {
+			return []*models.WatchedPath{
+				{ID: "wp-1", ProviderID: "prov-1", TenantID: "t-1", Path: "/docs", SyncState: &syncToken},
+			}, nil
+		},
+		onGetProvider: func(_ context.Context, _ string) (*models.Provider, error) {
+			return nil, errors.New("provider error")
+		},
+	}
+
+	syncer := newTestSyncer(store, &mockProvider{providerType: "test_provider"}, nil)
+	// Should not panic — logs the error and continues.
+	syncer.pollAll(context.Background())
+}

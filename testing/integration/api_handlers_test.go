@@ -330,6 +330,89 @@ func TestAPI_TriggerIngest(t *testing.T) {
 }
 
 // =============================================================================
+// Users
+// =============================================================================
+
+func TestAPI_Users_ListInTenant(t *testing.T) {
+	list := rtesting.ServeRequest(testAPIEngine, "GET", "/users", nil)
+	rtesting.AssertStatus(t, list, 200)
+
+	var resp wire.UserListResponse
+	if err := list.DecodeJSON(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Users) == 0 {
+		t.Error("expected at least one user in tenant")
+	}
+
+	// The test user created in InitEngines should be in the list.
+	found := false
+	for _, u := range resp.Users {
+		if u.ID == testUserID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("test user %s not found in user list", testUserID)
+	}
+}
+
+func TestAPI_Users_GetMyProfile(t *testing.T) {
+	get := rtesting.ServeRequest(testAPIEngine, "GET", "/users/me", nil)
+	rtesting.AssertStatus(t, get, 200)
+
+	var resp wire.UserResponse
+	if err := get.DecodeJSON(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.ID != testUserID {
+		t.Errorf("expected user ID %s, got %s", testUserID, resp.ID)
+	}
+	if resp.Email == "" {
+		t.Error("expected non-empty email")
+	}
+}
+
+// =============================================================================
+// Job Status (SSE)
+// =============================================================================
+
+func TestAPI_JobStatus_CompletedJob(t *testing.T) {
+	s := Stores(t)
+	ctx := context.Background()
+
+	// Create prerequisite data: a document + version.
+	_, version := setupIngestableDocument(t, s, ctx)
+
+	// Create a job directly and mark it completed.
+	job, err := s.Jobs.CreateJob(ctx, version.ID, version.DocumentID, testTenantID)
+	if err != nil {
+		t.Fatalf("creating job: %v", err)
+	}
+	if err := s.Jobs.UpdateJobStatus(ctx, job.ID, models.JobCompleted, nil); err != nil {
+		t.Fatalf("marking job completed: %v", err)
+	}
+
+	// The job status endpoint is SSE. ServeRequest captures the initial response.
+	// For a completed job, the handler sends the status event and done event, then returns.
+	get := rtesting.ServeRequest(testAPIEngine, "GET", "/jobs/"+job.ID+"/status", nil)
+	// SSE endpoints return 200.
+	rtesting.AssertStatus(t, get, 200)
+	t.Logf("job status response: %s", get.BodyString())
+}
+
+func TestAPI_JobStatus_NotFound(t *testing.T) {
+	get := rtesting.ServeRequest(testAPIEngine, "GET", "/jobs/nonexistent/status", nil)
+	// SSE handler still returns 200 but sends an error event for not-found jobs.
+	rtesting.AssertStatus(t, get, 200)
+}
+
+// NOTE: OAuth connect endpoints (GET /providers/{id}/auth-url, POST /providers/{id}/connect)
+// are not tested here. They require a real OAuth provider (redirect flows, token exchange)
+// which is not feasible in integration tests with testcontainers alone.
+
+// =============================================================================
 // Helpers
 // =============================================================================
 
