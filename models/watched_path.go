@@ -6,6 +6,7 @@ import "time"
 type WatchedPath struct {
 	CreatedAt  time.Time `json:"created_at" db:"created_at" default:"now()"`
 	UpdatedAt  time.Time `json:"updated_at" db:"updated_at" default:"now()"`
+	SyncState  *string   `json:"-" db:"sync_state" store.encrypt:"aes" load.decrypt:"aes"`
 	Path       string    `json:"path" db:"path" constraints:"notnull"`
 	ID         string    `json:"id" db:"id" constraints:"primarykey"`
 	TenantID   string    `json:"tenant_id" db:"tenant_id" constraints:"notnull"`
@@ -23,7 +24,12 @@ func (w WatchedPath) GetCreatedAt() time.Time {
 	return w.CreatedAt
 }
 
-// Clone returns a copy of the watched path.
+// Clone returns a deep copy of the watched path.
 func (w WatchedPath) Clone() WatchedPath {
-	return w
+	c := w
+	if w.SyncState != nil {
+		s := *w.SyncState
+		c.SyncState = &s
+	}
+	return c
 }
