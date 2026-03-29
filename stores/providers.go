@@ -3,7 +3,6 @@ package stores
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -81,21 +80,16 @@ func (s *Providers) GetProviderByTenant(ctx context.Context, id, tenantID string
 }
 
 // UpdateProviderCredentials stores credentials and marks the provider active.
+// Uses s.Set() to trigger BeforeSave → cereal boundary → AES encryption.
 func (s *Providers) UpdateProviderCredentials(ctx context.Context, id, credentials string) error {
-	params := map[string]any{
-		"id":          id,
-		"credentials": credentials,
-		"active":      true,
-		"updated_at":  time.Now(),
-	}
-	q := s.Modify().
-		Set("credentials", "credentials").
-		Set("active", "active").
-		Set("updated_at", "updated_at").
-		Where("id", "=", "id")
-	_, err := q.Exec(ctx, params)
+	p, err := s.GetProvider(ctx, id)
 	if err != nil {
 		return fmt.Errorf("updating provider credentials: %w", err)
+	}
+	p.Credentials = credentials
+	p.Active = true
+	if setErr := s.Set(ctx, id, p); setErr != nil {
+		return fmt.Errorf("updating provider credentials: %w", setErr)
 	}
 	return nil
 }
