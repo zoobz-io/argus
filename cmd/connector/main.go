@@ -15,21 +15,26 @@ import (
 	"log"
 	"os/signal"
 	"syscall"
+	"time"
 
 	astqlpg "github.com/zoobz-io/astql/postgres"
+	"github.com/zoobz-io/capitan"
+	"github.com/zoobz-io/herald"
+	heraldredis "github.com/zoobz-io/herald/redis"
 	"github.com/zoobz-io/sum"
 
 	"github.com/zoobz-io/argus/config"
+	"github.com/zoobz-io/argus/events"
 	"github.com/zoobz-io/argus/internal/boot"
 	"github.com/zoobz-io/argus/internal/connector"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/provider"
+	"github.com/zoobz-io/argus/provider/azureblob"
+	"github.com/zoobz-io/argus/provider/dropbox"
+	"github.com/zoobz-io/argus/provider/gcs"
 	"github.com/zoobz-io/argus/provider/googledrive"
 	"github.com/zoobz-io/argus/provider/onedrive"
-	"github.com/zoobz-io/argus/provider/dropbox"
 	"github.com/zoobz-io/argus/provider/s3"
-	"github.com/zoobz-io/argus/provider/gcs"
-	"github.com/zoobz-io/argus/provider/azureblob"
 	"github.com/zoobz-io/argus/stores"
 
 	_ "github.com/zoobz-io/grub/postgres"
@@ -90,14 +95,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	_ = bucketProvider // Used by fetch (PR 3).
 
 	redisClient, err := boot.Redis(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = redisClient.Close() }()
-	_ = redisClient // Used by herald (PR 3).
 
 	searchProvider, err := boot.OpenSearch(ctx)
 	if err != nil {
@@ -169,7 +172,50 @@ func run() error {
 	_ = ap
 
 	// =========================================================================
-	// 7. Start Syncer
+	// 7. Create Fetcher
+	// =========================================================================
+
+	fetchStore := &fetchStoreAdapter{
+		prov: allStores.Providers,
+		jobs: allStores.Jobs,
+	}
+	fetcher := connector.NewFetcher(fetchStore, credManager, registry, bucketProvider)
+
+	// =========================================================================
+	// 8. Herald: Ingest Queue Publisher (FetchSignal → argus:ingestion)
+	// =========================================================================
+
+	ingestStream := heraldredis.New("argus:ingestion", heraldredis.WithClient(redisClient))
+	ingestPub := herald.NewPublisher(
+		ingestStream,
+		events.IngestQueueSignal,
+		events.IngestQueueKey,
+		[]herald.Option[events.IngestMessage]{
+			herald.WithRetry[events.IngestMessage](3),
+			herald.WithBackoff[events.IngestMessage](3, 500*time.Millisecond),
+		},
+	)
+	ingestPub.Start()
+	defer func() { _ = ingestPub.Close() }()
+	log.Println("ingest queue publisher initialized")
+
+	// =========================================================================
+	// 9. Hook FetchSignal → Fetcher
+	// =========================================================================
+
+	capitan.Hook(events.FetchSignal, func(ctx context.Context, e *capitan.Event) {
+		msg, ok := events.FetchKey.From(e)
+		if !ok {
+			return
+		}
+		log.Printf("fetching version %s (document %s)", msg.VersionID, msg.DocumentID)
+		if err := fetcher.HandleFetch(ctx, msg); err != nil {
+			log.Printf("fetch error for version %s: %v", msg.VersionID, err)
+		}
+	})
+
+	// =========================================================================
+	// 10. Start Syncer
 	// =========================================================================
 
 	connectorCfg := sum.MustUse[config.Connector](ctx)
@@ -187,7 +233,7 @@ func run() error {
 	}()
 
 	// =========================================================================
-	// 8. Block Until Shutdown
+	// 11. Block Until Shutdown
 	// =========================================================================
 
 	log.Println("connector ready")
@@ -236,4 +282,18 @@ func (a *syncStoreAdapter) GetLatestVersion(ctx context.Context, documentID stri
 
 func (a *syncStoreAdapter) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
 	return a.prov.GetProvider(ctx, id)
+}
+
+// fetchStoreAdapter composes individual stores to satisfy connector.FetchStore.
+type fetchStoreAdapter struct {
+	prov *stores.Providers
+	jobs *stores.Jobs
+}
+
+func (a *fetchStoreAdapter) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
+	return a.prov.GetProvider(ctx, id)
+}
+
+func (a *fetchStoreAdapter) CreateJob(ctx context.Context, versionID, documentID, tenantID string) (*models.Job, error) {
+	return a.jobs.CreateJob(ctx, versionID, documentID, tenantID)
 }
