@@ -246,11 +246,10 @@ func run() error {
 	defer func() { _ = ingestPub.Close() }()
 	log.Println("ingestion queue publisher initialized")
 
-	hostname := boot.Hostname()
-	jobStatusStream := heraldredis.New("argus:job-status",
-		heraldredis.WithClient(redisClient),
-		heraldredis.WithGroup("argus-app-"+hostname),
-		heraldredis.WithConsumer(hostname),
+	// Subscriber: job-status via Pub/Sub for broadcast to all app instances.
+	// No consumer groups — Pub/Sub is fire-and-forget fanout.
+	jobStatusStream := heraldredis.NewPubSub("argus:job-status",
+		heraldredis.WithPubSubClient(redisClient),
 	)
 	jobStatusSub := herald.NewSubscriber(
 		jobStatusStream,
