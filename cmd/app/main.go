@@ -265,10 +265,8 @@ func run() error {
 	defer func() { _ = jobStatusSub.Close() }()
 	log.Println("job status subscriber initialized")
 
-	notifyHintStream := heraldredis.New("argus:notify-hints",
-		heraldredis.WithClient(redisClient),
-		heraldredis.WithGroup("argus-app-"+hostname),
-		heraldredis.WithConsumer(hostname),
+	notifyHintStream := heraldredis.NewPubSub("argus:notify-hints",
+		heraldredis.WithPubSubClient(redisClient),
 	)
 	notifyHintSub := herald.NewSubscriber(
 		notifyHintStream,

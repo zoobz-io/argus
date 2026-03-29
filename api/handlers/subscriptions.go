@@ -57,8 +57,13 @@ var createSubscription = rocco.POST[wire.SubscriptionRequest, wire.SubscriptionR
 
 var deleteSubscription = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/subscriptions/{id}", func(r *rocco.Request[rocco.NoBody]) (rocco.NoBody, error) {
 	tid := tenantID(r.Identity)
+	users := sum.MustUse[contracts.Users](r)
+	user, err := users.GetUserByExternalID(r, r.Identity.ID())
+	if err != nil {
+		return rocco.NoBody{}, ErrUserNotFound
+	}
 	store := sum.MustUse[contracts.Subscriptions](r)
-	if err := store.DeleteSubscription(r, tid, pathID(r.Params, "id")); err != nil {
+	if err := store.DeleteSubscription(r, tid, user.ID, pathID(r.Params, "id")); err != nil {
 		return rocco.NoBody{}, ErrSubscriptionNotFound
 	}
 	return rocco.NoBody{}, nil

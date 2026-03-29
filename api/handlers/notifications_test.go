@@ -87,7 +87,7 @@ func TestListNotifications_Error(t *testing.T) {
 
 func TestUpdateNotificationStatus_Success(t *testing.T) {
 	notifs := &argustest.MockNotifications{
-		OnUpdateStatus: func(_ context.Context, _, id string, status models.NotificationStatus) (*models.Notification, error) {
+		OnUpdateStatus: func(_ context.Context, _, _, id string, status models.NotificationStatus) (*models.Notification, error) {
 			return &models.Notification{
 				ID:        id,
 				Type:      models.NotificationIngestCompleted,
@@ -117,7 +117,7 @@ func TestUpdateNotificationStatus_Success(t *testing.T) {
 
 func TestUpdateNotificationStatus_NotFound(t *testing.T) {
 	notifs := &argustest.MockNotifications{
-		OnUpdateStatus: func(_ context.Context, _, _ string, _ models.NotificationStatus) (*models.Notification, error) {
+		OnUpdateStatus: func(_ context.Context, _, _, _ string, _ models.NotificationStatus) (*models.Notification, error) {
 			return nil, fmt.Errorf("not found")
 		},
 	}

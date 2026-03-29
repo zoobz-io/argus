@@ -60,11 +60,14 @@ func (s *Notifications) SearchByUser(ctx context.Context, tenantID, userID strin
 	}, nil
 }
 
-// UpdateStatus updates the status of a single notification and returns it.
-func (s *Notifications) UpdateStatus(ctx context.Context, _, id string, status models.NotificationStatus) (*models.Notification, error) {
+// UpdateStatus updates the status of a single notification after verifying tenant and user ownership.
+func (s *Notifications) UpdateStatus(ctx context.Context, tenantID, userID, id string, status models.NotificationStatus) (*models.Notification, error) {
 	doc, err := s.index.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("fetching notification for status update: %w", err)
+	}
+	if doc.Content.TenantID != tenantID || doc.Content.UserID != userID {
+		return nil, fmt.Errorf("notification not found")
 	}
 	doc.Content.Status = status
 	if err := s.index.Index(ctx, id, &doc.Content); err != nil {

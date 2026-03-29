@@ -154,7 +154,7 @@ func TestSubscriptions_DeleteSubscription(t *testing.T) {
 	mock.ExpectQuery().WithRows([]models.Subscription{s}) // GetSubscriptionByTenant
 	mock.ExpectExec().WithResult(1, 0)                    // Delete
 
-	err := store.DeleteSubscription(context.Background(), "t-1", "sub-1")
+	err := store.DeleteSubscription(context.Background(), "t-1", "u-1", "sub-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

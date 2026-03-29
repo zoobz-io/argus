@@ -83,7 +83,7 @@ func TestCreateSubscription_Success(t *testing.T) {
 
 func TestDeleteSubscription_Success(t *testing.T) {
 	subs := &argustest.MockSubscriptions{
-		OnDeleteSubscription: func(_ context.Context, _, _ string) error {
+		OnDeleteSubscription: func(_ context.Context, _, _, _ string) error {
 			return nil
 		},
 	}
@@ -96,7 +96,7 @@ func TestDeleteSubscription_Success(t *testing.T) {
 
 func TestDeleteSubscription_NotFound(t *testing.T) {
 	subs := &argustest.MockSubscriptions{
-		OnDeleteSubscription: func(_ context.Context, _, _ string) error {
+		OnDeleteSubscription: func(_ context.Context, _, _, _ string) error {
 			return fmt.Errorf("not found")
 		},
 	}

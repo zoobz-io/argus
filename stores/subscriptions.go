@@ -64,12 +64,14 @@ func (s *Subscriptions) GetSubscriptionByTenant(ctx context.Context, tenantID, i
 	return results[0], nil
 }
 
-// DeleteSubscription removes a subscription by ID scoped to a tenant.
-func (s *Subscriptions) DeleteSubscription(ctx context.Context, tenantID, id string) error {
-	// Verify tenant scope before deleting.
-	_, err := s.GetSubscriptionByTenant(ctx, tenantID, id)
+// DeleteSubscription removes a subscription by ID after verifying tenant and user ownership.
+func (s *Subscriptions) DeleteSubscription(ctx context.Context, tenantID, userID, id string) error {
+	sub, err := s.GetSubscriptionByTenant(ctx, tenantID, id)
 	if err != nil {
 		return err
+	}
+	if sub.UserID != userID {
+		return fmt.Errorf("subscription not found")
 	}
 	return s.Delete(ctx, id)
 }

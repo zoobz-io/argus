@@ -33,8 +33,13 @@ var listNotifications = rocco.GET[rocco.NoBody, wire.NotificationListResponse]("
 
 var updateNotificationStatus = rocco.PATCH[wire.NotificationUpdateRequest, wire.NotificationResponse]("/notifications/{id}", func(r *rocco.Request[wire.NotificationUpdateRequest]) (wire.NotificationResponse, error) {
 	tid := tenantID(r.Identity)
+	users := sum.MustUse[contracts.Users](r)
+	user, err := users.GetUserByExternalID(r, r.Identity.ID())
+	if err != nil {
+		return wire.NotificationResponse{}, ErrUserNotFound
+	}
 	store := sum.MustUse[contracts.Notifications](r)
-	n, err := store.UpdateStatus(r, tid, pathID(r.Params, "id"), models.NotificationStatus(r.Body.Status))
+	n, err := store.UpdateStatus(r, tid, user.ID, pathID(r.Params, "id"), models.NotificationStatus(r.Body.Status))
 	if err != nil {
 		return wire.NotificationResponse{}, ErrNotificationNotFound
 	}

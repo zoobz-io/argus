@@ -14,6 +14,6 @@ type Subscriptions interface {
 	ListSubscriptionsByUser(ctx context.Context, tenantID string, userID string, page models.OffsetPage) (*models.OffsetResult[models.Subscription], error)
 	// CreateSubscription creates a new subscription for a user.
 	CreateSubscription(ctx context.Context, tenantID string, userID string, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error)
-	// DeleteSubscription removes a subscription by ID scoped to a tenant.
-	DeleteSubscription(ctx context.Context, tenantID string, id string) error
+	// DeleteSubscription removes a subscription by ID scoped to tenant and user.
+	DeleteSubscription(ctx context.Context, tenantID string, userID string, id string) error
 }

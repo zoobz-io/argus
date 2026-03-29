@@ -37,11 +37,12 @@ var notificationStream = rocco.NewStreamHandler[rocco.NoBody, NotificationSSE](
 		}
 
 		userID := user.ID
+		tid := tenantID(r.Identity)
 
 		// 1. Subscribe to live hint signals BEFORE sending connected event.
 		listener := capitan.Hook(events.NotifyHintSignal, func(_ context.Context, e *capitan.Event) {
 			hint, ok := events.NotifyHintKey.From(e)
-			if !ok || hint.UserID != userID {
+			if !ok || hint.UserID != userID || hint.TenantID != tid {
 				return
 			}
 

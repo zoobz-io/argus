@@ -419,7 +419,7 @@ type MockSubscriptions struct {
 	OnGetSubscriptionByTenant func(ctx context.Context, tenantID, id string) (*models.Subscription, error)
 	OnListSubscriptionsByUser func(ctx context.Context, tenantID, userID string, page models.OffsetPage) (*models.OffsetResult[models.Subscription], error)
 	OnCreateSubscription      func(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error)
-	OnDeleteSubscription      func(ctx context.Context, tenantID, id string) error
+	OnDeleteSubscription      func(ctx context.Context, tenantID, userID, id string) error
 }
 
 func (m *MockSubscriptions) GetSubscriptionByTenant(ctx context.Context, tenantID, id string) (*models.Subscription, error) {
@@ -434,8 +434,8 @@ func (m *MockSubscriptions) CreateSubscription(ctx context.Context, tenantID, us
 	if m.OnCreateSubscription != nil { return m.OnCreateSubscription(ctx, tenantID, userID, eventType, channel) }
 	return &models.Subscription{}, nil
 }
-func (m *MockSubscriptions) DeleteSubscription(ctx context.Context, tenantID, id string) error {
-	if m.OnDeleteSubscription != nil { return m.OnDeleteSubscription(ctx, tenantID, id) }
+func (m *MockSubscriptions) DeleteSubscription(ctx context.Context, tenantID, userID, id string) error {
+	if m.OnDeleteSubscription != nil { return m.OnDeleteSubscription(ctx, tenantID, userID, id) }
 	return nil
 }
 
@@ -462,7 +462,7 @@ func (m *MockAdminSubscriptions) DeleteSubscription(ctx context.Context, id stri
 // MockNotifications satisfies api/contracts.Notifications.
 type MockNotifications struct {
 	OnSearchByUser    func(ctx context.Context, tenantID, userID string, page models.OffsetPage) (*models.OffsetResult[models.Notification], error)
-	OnUpdateStatus    func(ctx context.Context, tenantID, id string, status models.NotificationStatus) (*models.Notification, error)
+	OnUpdateStatus    func(ctx context.Context, tenantID, userID, id string, status models.NotificationStatus) (*models.Notification, error)
 	OnBulkUpdateStatus func(ctx context.Context, tenantID, userID string, status models.NotificationStatus) error
 }
 
@@ -470,8 +470,8 @@ func (m *MockNotifications) SearchByUser(ctx context.Context, tenantID, userID s
 	if m.OnSearchByUser != nil { return m.OnSearchByUser(ctx, tenantID, userID, page) }
 	return &models.OffsetResult[models.Notification]{Items: []*models.Notification{}}, nil
 }
-func (m *MockNotifications) UpdateStatus(ctx context.Context, tenantID, id string, status models.NotificationStatus) (*models.Notification, error) {
-	if m.OnUpdateStatus != nil { return m.OnUpdateStatus(ctx, tenantID, id, status) }
+func (m *MockNotifications) UpdateStatus(ctx context.Context, tenantID, userID, id string, status models.NotificationStatus) (*models.Notification, error) {
+	if m.OnUpdateStatus != nil { return m.OnUpdateStatus(ctx, tenantID, userID, id, status) }
 	return &models.Notification{}, nil
 }
 func (m *MockNotifications) BulkUpdateStatus(ctx context.Context, tenantID, userID string, status models.NotificationStatus) error {

@@ -139,8 +139,9 @@ func run() error {
 		}
 		items := make([]*notify.FanOutItem, len(subs))
 		for i, sub := range subs {
+			n := notif.Clone()
 			items[i] = &notify.FanOutItem{
-				Notification: &notif,
+				Notification: &n,
 				Subscription: sub,
 				EventID:      notif.ID,
 			}
@@ -218,6 +219,5 @@ func run() error {
 	log.Println("notifier ready")
 	<-ctx.Done()
 	log.Println("shutting down...")
-	close(inputCh)
 	return nil
 }
