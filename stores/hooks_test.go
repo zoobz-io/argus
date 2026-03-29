@@ -291,3 +291,183 @@ func TestHooks_DeleteHook_NotFound(t *testing.T) {
 	}
 	mock.AssertExpectations()
 }
+
+func TestHooks_DeleteHook_DeleteError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	secret := encryptSecret(t, "secret")
+	// GetHookByTenant succeeds.
+	mock.ExpectQuery().WithRows([]models.Hook{
+		{ID: "h-1", TenantID: "t-1", UserID: "u-1", URL: "https://a.com", Secret: secret, Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	// Delete fails.
+	mock.ExpectExec().WithError(errors.New("db error"))
+
+	err := store.DeleteHook(context.Background(), "t-1", "h-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestHooks_ListHooks_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("db error"))
+
+	_, err := store.ListHooks(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestHooks_ListHooks_CountError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	secret := encryptSecret(t, "secret")
+	mock.ExpectQuery().WithRows([]models.Hook{
+		{ID: "h-1", TenantID: "t-1", UserID: "u-1", URL: "https://a.com", Secret: secret, Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithError(errors.New("count error"))
+
+	_, err := store.ListHooks(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error from count query")
+	}
+	mock.AssertExpectations()
+}
+
+func TestHooks_GetWithSecret_NotFound(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+
+	mock.ExpectQuery().WithRows([]models.Hook{})
+
+	_, err := store.GetWithSecret(context.Background(), "t-1", "h-missing")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestHooks_GetWithSecret_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("db error"))
+
+	_, err := store.GetWithSecret(context.Background(), "t-1", "h-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestGenerateSecret(t *testing.T) {
+	secret, err := generateSecret()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if secret == "" {
+		t.Error("expected non-empty secret")
+	}
+	// 32 bytes hex-encoded = 64 characters.
+	if len(secret) != 64 {
+		t.Errorf("secret length: got %d, want 64", len(secret))
+	}
+}
+
+func TestGenerateSecret_Unique(t *testing.T) {
+	s1, _ := generateSecret()
+	s2, _ := generateSecret()
+	if s1 == s2 {
+		t.Error("expected two calls to produce different secrets")
+	}
+}
+
+func TestAdminHooks_DeleteHook(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+	admin := &AdminHooks{Hooks: store}
+
+	mock.ExpectExec().WithResult(1, 0)
+
+	err := admin.DeleteHook(context.Background(), "h-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mock.AssertExpectations()
+}
+
+func TestAdminHooks_DeleteHook_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+	admin := &AdminHooks{Hooks: store}
+
+	mock.ExpectExec().WithError(errors.New("db error"))
+
+	err := admin.DeleteHook(context.Background(), "h-1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestAdminHooks_ListHooks(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, mock)
+	admin := &AdminHooks{Hooks: store}
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	secret := encryptSecret(t, "secret")
+	mock.ExpectQuery().WithRows([]models.Hook{
+		{ID: "h-1", TenantID: "t-1", UserID: "u-1", URL: "https://a.com", Secret: secret, Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectQuery().WithRows([]countRow{{Count: 1}})
+
+	result, err := admin.ListHooks(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Errorf("Items: got %d, want 1", len(result.Items))
+	}
+	mock.AssertExpectations()
+}
+
+func TestAdminHooks_ListDeliveries(t *testing.T) {
+	hMock := soytesting.NewMockDB(t)
+	store := newTestHooks(t, hMock)
+
+	dMock := soytesting.NewMockDB(t)
+	// Need a fresh Deliveries store with its own mock.
+	sum.Reset()
+	t.Cleanup(sum.Reset)
+	sum.New()
+	k := sum.Start()
+	sum.Freeze(k)
+	dStore := NewDeliveries(dMock.DB(), astqlpg.New())
+
+	admin := &AdminHooks{Hooks: store, deliveries: dStore}
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	dMock.ExpectQuery().WithRows([]models.Delivery{
+		{ID: "d-1", HookID: "h-1", EventID: "evt-1", TenantID: "t-1", StatusCode: 200, Attempt: 1, CreatedAt: ts},
+	})
+	dMock.ExpectQuery().WithRows([]countRow{{Count: 1}})
+
+	result, err := admin.ListDeliveries(context.Background(), models.OffsetPage{Offset: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Errorf("Items: got %d, want 1", len(result.Items))
+	}
+	dMock.AssertExpectations()
+}

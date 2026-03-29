@@ -13,10 +13,11 @@ import (
 
 // mockSearchProvider is a test mock for grub.SearchProvider.
 type mockSearchProvider struct {
-	OnIndex  func(ctx context.Context, index, id string, doc []byte) error
-	OnGet    func(ctx context.Context, index, id string) ([]byte, error)
-	OnDelete func(ctx context.Context, index, id string) error
-	OnSearch func(ctx context.Context, index string, search *lucene.Search) (*grub.SearchResponse, error)
+	OnIndex      func(ctx context.Context, index, id string, doc []byte) error
+	OnIndexBatch func(ctx context.Context, index string, docs map[string][]byte) error
+	OnGet        func(ctx context.Context, index, id string) ([]byte, error)
+	OnDelete     func(ctx context.Context, index, id string) error
+	OnSearch     func(ctx context.Context, index string, search *lucene.Search) (*grub.SearchResponse, error)
 }
 
 func (m *mockSearchProvider) Index(ctx context.Context, index, id string, doc []byte) error {
@@ -25,7 +26,10 @@ func (m *mockSearchProvider) Index(ctx context.Context, index, id string, doc []
 	}
 	return nil
 }
-func (m *mockSearchProvider) IndexBatch(_ context.Context, _ string, _ map[string][]byte) error {
+func (m *mockSearchProvider) IndexBatch(ctx context.Context, index string, docs map[string][]byte) error {
+	if m.OnIndexBatch != nil {
+		return m.OnIndexBatch(ctx, index, docs)
+	}
 	return nil
 }
 func (m *mockSearchProvider) Get(ctx context.Context, index, id string) ([]byte, error) {

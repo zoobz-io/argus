@@ -96,6 +96,8 @@ func InitStores(ctx context.Context, infra *Infra) error {
 	sum.Register[apicontracts.Notifications](k, testStores.Notifications)
 	sum.Register[apicontracts.Subscriptions](k, testStores.Subscriptions)
 	sum.Register[apicontracts.JobReader](k, testStores.Jobs)
+	sum.Register[apicontracts.Hooks](k, testStores.Hooks)
+	sum.Register[apicontracts.Deliveries](k, testStores.Deliveries)
 	sum.Register[apicontracts.IngestEnqueuer](k, ingest.NewEnqueuer())
 	sum.Register[apicontracts.QueryEmbedder](k, &stubQueryEmbedder{dimensions: 1536})
 
@@ -108,6 +110,8 @@ func InitStores(ctx context.Context, infra *Infra) error {
 	sum.Register[admincontracts.Tags](k, testStores.Tags)
 	sum.Register[admincontracts.Users](k, testStores.Users)
 	sum.Register[admincontracts.Subscriptions](k, testStores.AdminSubscriptions)
+	sum.Register[admincontracts.Hooks](k, testStores.AdminHooks)
+	sum.Register[admincontracts.AuditLog](k, testStores.Audit)
 
 	// Internal contracts (pipeline).
 	sum.Register[intcontracts.IngestVersions](k, testStores.DocumentVersions)
@@ -152,6 +156,8 @@ func InitStores(ctx context.Context, infra *Infra) error {
 	sum.NewBoundary[models.User](k)
 	sum.NewBoundary[models.Subscription](k)
 	sum.NewBoundary[models.Job](k)
+	sum.NewBoundary[models.Hook](k)
+	sum.NewBoundary[models.Delivery](k)
 
 	// Wire boundaries (needed for handler OnSend).
 	wire.RegisterBoundaries(k)
