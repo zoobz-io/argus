@@ -563,3 +563,211 @@ func TestFetch_InvalidItemID(t *testing.T) {
 		t.Errorf("error should mention invalid item ID, got %q", err.Error())
 	}
 }
+
+// --- error path tests ---
+
+func TestList_APIError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/me/drive/items/root/children": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		},
+	})
+	defer server.Close()
+
+	o := newTestProvider(t, server)
+	_, _, err := o.List(context.Background(), validCreds(), "root")
+	if err == nil {
+		t.Fatal("expected error for API failure")
+	}
+	if !strings.Contains(err.Error(), "listing files") {
+		t.Errorf("error should mention listing files, got %q", err.Error())
+	}
+}
+
+func TestList_InvalidJSON(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/me/drive/items/root/children": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("not json"))
+		},
+	})
+	defer server.Close()
+
+	o := newTestProvider(t, server)
+	_, _, err := o.List(context.Background(), validCreds(), "root")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "listing files") {
+		t.Errorf("error should mention listing files, got %q", err.Error())
+	}
+}
+
+func TestChanges_APIError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/me/drive/root/delta": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "bad gateway", http.StatusBadGateway)
+		},
+	})
+	defer server.Close()
+
+	o := newTestProvider(t, server)
+	_, _, _, err := o.Changes(context.Background(), validCreds(), "", "")
+	if err == nil {
+		t.Fatal("expected error for API failure")
+	}
+	if !strings.Contains(err.Error(), "querying delta") {
+		t.Errorf("error should mention querying delta, got %q", err.Error())
+	}
+}
+
+func TestChanges_Pagination(t *testing.T) {
+	callCount := 0
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/me/drive/root/delta": func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			if callCount == 1 {
+				jsonResponse(w, mustJSON(map[string]any{
+					"value": []map[string]any{
+						{"id": "f1", "name": "page1.pdf", "file": map[string]any{"mimeType": "application/pdf"}},
+					},
+					"@odata.nextLink": "http://" + r.Host + "/me/drive/root/delta?page=2",
+				}))
+				return
+			}
+			jsonResponse(w, mustJSON(map[string]any{
+				"value": []map[string]any{
+					{"id": "f2", "name": "page2.pdf", "file": map[string]any{"mimeType": "application/pdf"}},
+				},
+				"@odata.deltaLink": "http://" + r.Host + "/me/drive/root/delta?token=final",
+			}))
+		},
+	})
+	defer server.Close()
+
+	o := newTestProvider(t, server)
+	changes, token, _, err := o.Changes(context.Background(), validCreds(), "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 changes across pages, got %d", len(changes))
+	}
+	if !strings.Contains(token, "token=final") {
+		t.Errorf("expected final delta token, got %q", token)
+	}
+}
+
+func TestChanges_NoLinks(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/me/drive/root/delta": func(w http.ResponseWriter, _ *http.Request) {
+			jsonResponse(w, mustJSON(map[string]any{
+				"value": []map[string]any{
+					{"id": "f1", "name": "file.pdf", "file": map[string]any{"mimeType": "application/pdf"}},
+				},
+			}))
+		},
+	})
+	defer server.Close()
+
+	o := newTestProvider(t, server)
+	changes, _, _, err := o.Changes(context.Background(), validCreds(), "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+}
+
+func TestFetch_MetadataAPIError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/me/drive/items/file-1": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "not found", http.StatusNotFound)
+		},
+	})
+	defer server.Close()
+
+	o := newTestProvider(t, server)
+	_, _, _, err := o.Fetch(context.Background(), validCreds(), "file-1")
+	if err == nil {
+		t.Fatal("expected error for metadata failure")
+	}
+	if !strings.Contains(err.Error(), "getting file metadata") {
+		t.Errorf("error should mention metadata, got %q", err.Error())
+	}
+}
+
+func TestFetch_ContentDownloadError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/me/drive/items/file-1/content": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "gone", http.StatusGone)
+		},
+		"/me/drive/items/file-1": func(w http.ResponseWriter, _ *http.Request) {
+			jsonResponse(w, mustJSON(map[string]any{
+				"id": "file-1", "name": "report.pdf", "size": 9,
+				"file": map[string]any{
+					"mimeType": "application/pdf",
+					"hashes":   map[string]any{"sha1Hash": "hash123"},
+				},
+			}))
+		},
+	})
+	defer server.Close()
+
+	o := newTestProvider(t, server)
+	_, _, _, err := o.Fetch(context.Background(), validCreds(), "file-1")
+	if err == nil {
+		t.Fatal("expected error for content download failure")
+	}
+	if !strings.Contains(err.Error(), "downloading") {
+		t.Errorf("error should mention downloading, got %q", err.Error())
+	}
+}
+
+func TestExchange_Failure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "invalid grant", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	o := &OneDrive{
+		oauth: &oauth2.Config{
+			ClientID: "id", ClientSecret: "secret",
+			Endpoint: oauth2.Endpoint{TokenURL: server.URL},
+		},
+	}
+
+	_, err := o.Exchange(context.Background(), "bad-code", "https://app.example.com/callback")
+	if err == nil {
+		t.Fatal("expected error for bad exchange")
+	}
+	if !strings.Contains(err.Error(), "exchanging auth code") {
+		t.Errorf("error should mention exchange, got %q", err.Error())
+	}
+}
+
+func TestNew_CustomScopes(t *testing.T) {
+	o := New(Config{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		Scopes:       []string{"custom.scope"},
+	})
+	if o.Type() != "onedrive" {
+		t.Errorf("type: got %q", o.Type())
+	}
+}
+
+func TestHashFromItem_NoFile(t *testing.T) {
+	item := &graphItem{File: &graphFile{}}
+	if got := hashFromItem(item); got != "" {
+		t.Errorf("expected empty hash for file with nil hashes, got %q", got)
+	}
+}

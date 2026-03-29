@@ -443,6 +443,177 @@ func TestFetch_RegularFile(t *testing.T) {
 	}
 }
 
+func TestList_APIError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/files": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, err := g.List(context.Background(), validCreds(), "root")
+	if err == nil {
+		t.Fatal("expected error for API failure")
+	}
+	if !strings.Contains(err.Error(), "listing files") {
+		t.Errorf("error should mention listing files, got %q", err.Error())
+	}
+}
+
+func TestChanges_APIError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/changes": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Changes(context.Background(), validCreds(), "", "token-1")
+	if err == nil {
+		t.Fatal("expected error for API failure")
+	}
+	if !strings.Contains(err.Error(), "listing changes") {
+		t.Errorf("error should mention listing changes, got %q", err.Error())
+	}
+}
+
+func TestChanges_GetStartTokenError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token":                  tokenHandler(),
+		"/changes/startPageToken": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Changes(context.Background(), validCreds(), "", "")
+	if err == nil {
+		t.Fatal("expected error for start token failure")
+	}
+	if !strings.Contains(err.Error(), "getting start token") {
+		t.Errorf("error should mention start token, got %q", err.Error())
+	}
+}
+
+func TestFetch_MetadataError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/files/file-1": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "not found", http.StatusNotFound)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Fetch(context.Background(), validCreds(), "file-1")
+	if err == nil {
+		t.Fatal("expected error for metadata failure")
+	}
+	if !strings.Contains(err.Error(), "getting file metadata") {
+		t.Errorf("error should mention metadata, got %q", err.Error())
+	}
+}
+
+func TestFetch_DownloadError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/files/file-1": func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("alt") == "media" {
+				http.Error(w, "gone", http.StatusGone)
+				return
+			}
+			jsonResponse(w, mustJSON(map[string]any{
+				"id": "file-1", "name": "report.pdf", "mimeType": "application/pdf",
+				"size": "9", "md5Checksum": "hash123",
+			}))
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Fetch(context.Background(), validCreds(), "file-1")
+	if err == nil {
+		t.Fatal("expected error for download failure")
+	}
+	if !strings.Contains(err.Error(), "downloading") {
+		t.Errorf("error should mention downloading, got %q", err.Error())
+	}
+}
+
+func TestFetch_ExportError(t *testing.T) {
+	server := fakeServer(t, map[string]http.HandlerFunc{
+		"/token": tokenHandler(),
+		"/files/doc-1/export": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		},
+		"/files/doc-1": func(w http.ResponseWriter, _ *http.Request) {
+			jsonResponse(w, mustJSON(map[string]any{
+				"id": "doc-1", "name": "My Doc",
+				"mimeType": "application/vnd.google-apps.document", "size": "0",
+			}))
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Fetch(context.Background(), validCreds(), "doc-1")
+	if err == nil {
+		t.Fatal("expected error for export failure")
+	}
+	if !strings.Contains(err.Error(), "exporting") {
+		t.Errorf("error should mention exporting, got %q", err.Error())
+	}
+}
+
+func TestExchange_Failure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "invalid grant", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	g := &GoogleDrive{
+		oauth: &oauth2.Config{
+			ClientID: "id", ClientSecret: "secret",
+			Endpoint: oauth2.Endpoint{TokenURL: server.URL},
+		},
+	}
+
+	_, err := g.Exchange(context.Background(), "bad-code", "https://app.example.com/callback")
+	if err == nil {
+		t.Fatal("expected error for bad exchange")
+	}
+	if !strings.Contains(err.Error(), "exchanging auth code") {
+		t.Errorf("error should mention exchange, got %q", err.Error())
+	}
+}
+
+func TestNew_CustomScopes(t *testing.T) {
+	g := New(Config{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		Scopes:       []string{"custom.scope"},
+	})
+	if g.Type() != "google_drive" {
+		t.Errorf("type: got %q", g.Type())
+	}
+}
+
+func TestFileToEntry_InvalidModifiedTime(t *testing.T) {
+	f := &drive.File{
+		Id: "f1", Name: "doc.pdf", MimeType: "application/pdf",
+		ModifiedTime: "not-a-date",
+	}
+	entry := fileToEntry(f)
+	if entry.ModifiedAt.IsZero() != true {
+		t.Error("expected zero time for invalid modified time")
+	}
+}
+
 func TestFetch_GoogleNativeExport(t *testing.T) {
 	server := fakeServer(t, map[string]http.HandlerFunc{
 		"/token": tokenHandler(),
