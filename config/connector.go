@@ -1,16 +1,19 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // Connector holds connector service configuration.
 type Connector struct {
-	PollInterval string `env:"APP_CONNECTOR_POLL_INTERVAL" default:"60s"`
+	PollInterval time.Duration `env:"APP_CONNECTOR_POLL_INTERVAL" default:"60s"`
 }
 
 // Validate checks that the configuration is valid.
 func (c Connector) Validate() error {
-	if c.PollInterval == "" {
-		return errors.New("poll interval is required")
+	if c.PollInterval <= 0 {
+		return errors.New("poll interval must be positive")
 	}
 	return nil
 }
