@@ -27,8 +27,8 @@ require (
 	github.com/zoobz-io/grub/opensearch v0.1.11
 	github.com/zoobz-io/grub/postgres v0.1.11
 	github.com/zoobz-io/grub/redis v0.1.11
-	github.com/zoobz-io/herald v1.0.2
-	github.com/zoobz-io/herald/redis v1.0.2
+	github.com/zoobz-io/herald v1.0.4
+	github.com/zoobz-io/herald/redis v1.0.4
 	github.com/zoobz-io/lucene v0.0.4
 	github.com/zoobz-io/pipz v1.0.5
 	github.com/zoobz-io/rocco v0.1.16

@@ -259,10 +259,10 @@ github.com/zoobz-io/grub/postgres v0.1.11 h1:hqJLOJC/LpDzIfmJUsYPsNvdig2UTRbAwXv
 github.com/zoobz-io/grub/postgres v0.1.11/go.mod h1:ybevuA9qTy3hJF7RZWMadwDhD5PfaXPYPqy5G2SSfIc=
 github.com/zoobz-io/grub/redis v0.1.11 h1:N+L9+vNK06HhL6nZ9b6ewZBNXDKbCPybLvYaimM7RF8=
 github.com/zoobz-io/grub/redis v0.1.11/go.mod h1:xuWnZweK82wpzF6oVIebozlpZ4RIJZks1XkyeT7Q54w=
-github.com/zoobz-io/herald v1.0.2 h1:hYzxyZDTG8MazmBRSsIgQR865Y0llh4qErfFOpTCOxk=
-github.com/zoobz-io/herald v1.0.2/go.mod h1:Rr0ssfReeqtY0nleXf9varZcz8C0vH10IGRx9iL8mSg=
-github.com/zoobz-io/herald/redis v1.0.2 h1:IfcIplAKUNOtvob3tMAC6CtZJvNImoP5G0do8ewYg3Q=
-github.com/zoobz-io/herald/redis v1.0.2/go.mod h1:hBs1PhTwlvTO+l5+I0+dQUEtuZ7vhh4UhlM7+t8dkj4=
+github.com/zoobz-io/herald v1.0.4 h1:P7B9tEt2j291r0cFNr+K3uL0WdhQm5C1CIDMbtiwY9A=
+github.com/zoobz-io/herald v1.0.4/go.mod h1:Rr0ssfReeqtY0nleXf9varZcz8C0vH10IGRx9iL8mSg=
+github.com/zoobz-io/herald/redis v1.0.4 h1:f1THVXkQCvY7rJaI7jvDTzczRdQnknWbu9eNCYzOZu4=
+github.com/zoobz-io/herald/redis v1.0.4/go.mod h1:hBs1PhTwlvTO+l5+I0+dQUEtuZ7vhh4UhlM7+t8dkj4=
 github.com/zoobz-io/lucene v0.0.4 h1:hmt8rjzCVGPecVTCIYOiu/QDZioE8NQqUUvm+/FXl4E=
 github.com/zoobz-io/lucene v0.0.4/go.mod h1:rGPnnt5XV8B4UcRKn/0VrlFM7fMz+tP7+lnKHSWP15o=
 github.com/zoobz-io/openapi v1.0.2 h1:KWJmjt/EYTkyzTvNCEK6BXDRWV7J45LhRXqWWZjm2mc=

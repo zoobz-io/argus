@@ -217,7 +217,7 @@ func run() error {
 	// 7. Herald Publisher: JobStatusSignal → argus:job-status stream
 	// =========================================================================
 
-	jobStatusStream := heraldredis.New("argus:job-status", heraldredis.WithClient(redisClient))
+	jobStatusStream := heraldredis.NewPubSub("argus:job-status", heraldredis.WithPubSubClient(redisClient))
 	jobStatusPub := herald.NewPublisher(
 		jobStatusStream,
 		events.JobStatusSignal,
