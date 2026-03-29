@@ -27,6 +27,8 @@ type Notification struct {
 	Type       NotificationType   `json:"type"`
 	Status     NotificationStatus `json:"status"`
 	ID         string             `json:"id"`
+	UserID     string             `json:"user_id"`
+	EventID    string             `json:"event_id,omitempty"`
 	TenantID   string             `json:"tenant_id"`
 	DocumentID string             `json:"document_id,omitempty"`
 	VersionID  string             `json:"version_id,omitempty"`
@@ -37,4 +39,11 @@ type Notification struct {
 // Clone returns a deep copy of the notification.
 func (n Notification) Clone() Notification {
 	return n
+}
+
+// NotificationSearchResult holds search results for notifications.
+type NotificationSearchResult struct {
+	Items  []*Notification
+	Total  int64
+	Offset int
 }

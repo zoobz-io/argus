@@ -21,4 +21,8 @@ func RegisterBoundaries(k sum.Key) {
 	sum.NewBoundary[TagListResponse](k)
 	sum.NewBoundary[UserResponse](k)
 	sum.NewBoundary[UserListResponse](k)
+	sum.NewBoundary[SubscriptionResponse](k)
+	sum.NewBoundary[SubscriptionListResponse](k)
+	sum.NewBoundary[NotificationResponse](k)
+	sum.NewBoundary[NotificationListResponse](k)
 }

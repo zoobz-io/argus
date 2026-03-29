@@ -156,6 +156,8 @@ func run() error {
 	sum.Register[apicontracts.Tags](k, allStores.Tags)
 	sum.Register[apicontracts.JobReader](k, allStores.Jobs)
 	sum.Register[apicontracts.Users](k, allStores.Users)
+	sum.Register[apicontracts.Subscriptions](k, allStores.Subscriptions)
+	sum.Register[apicontracts.Notifications](k, allStores.Notifications)
 
 	// Admin API contracts
 	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
@@ -167,6 +169,7 @@ func run() error {
 	sum.Register[admincontracts.Topics](k, allStores.Topics)
 	sum.Register[admincontracts.Tags](k, allStores.Tags)
 	sum.Register[admincontracts.Users](k, allStores.Users)
+	sum.Register[admincontracts.Subscriptions](k, allStores.AdminSubscriptions)
 
 	// Internal contracts — enqueuer needs versions, documents, jobs.
 	// Classifier needed by vocabulary pipeline.
@@ -184,7 +187,7 @@ func run() error {
 	sum.Register[admincontracts.Vocabulary](k, vocabPipeline)
 
 	// Authentication (OIDC) — now that stores exist, wire the user upserter.
-	authenticator, err := auth.NewAuthenticator(ctx, authCfg.Issuer, authCfg.Audience, &userUpserterAdapter{store: allStores.Users})
+	authenticator, err := auth.NewAuthenticator(ctx, authCfg.Issuer, authCfg.Audience, &userUpserterAdapter{store: allStores.Users, subs: allStores.Subscriptions})
 	if err != nil {
 		return fmt.Errorf("failed to create oidc authenticator: %w", err)
 	}
@@ -202,6 +205,7 @@ func run() error {
 	sum.NewBoundary[models.Document](k)
 	sum.NewBoundary[models.DocumentVersion](k)
 	sum.NewBoundary[models.User](k)
+	sum.NewBoundary[models.Subscription](k)
 	wire.RegisterBoundaries(k)
 
 	// =========================================================================
@@ -261,6 +265,21 @@ func run() error {
 	defer func() { _ = jobStatusSub.Close() }()
 	log.Println("job status subscriber initialized")
 
+	notifyHintStream := heraldredis.New("argus:notify-hints",
+		heraldredis.WithClient(redisClient),
+		heraldredis.WithGroup("argus-app-"+hostname),
+		heraldredis.WithConsumer(hostname),
+	)
+	notifyHintSub := herald.NewSubscriber(
+		notifyHintStream,
+		events.NotifyHintSignal,
+		events.NotifyHintKey,
+		[]herald.Option[events.NotifyHint]{},
+	)
+	notifyHintSub.Start(ctx)
+	defer func() { _ = notifyHintSub.Close() }()
+	log.Println("notify hints subscriber initialized")
+
 	// =========================================================================
 	// 8. Register Handlers and Start Server
 	// =========================================================================
@@ -282,9 +301,18 @@ type userUpserterAdapter struct {
 	store interface {
 		UpsertFromClaims(ctx context.Context, externalID, tenantID, email, displayName string) (*models.User, error)
 	}
+	subs interface {
+		CreateDefaultSubscriptions(ctx context.Context, userID, tenantID string) error
+	}
 }
 
 func (a *userUpserterAdapter) UpsertFromClaims(ctx context.Context, externalID, tenantID, email, displayName string) error {
-	_, err := a.store.UpsertFromClaims(ctx, externalID, tenantID, email, displayName)
-	return err
+	user, err := a.store.UpsertFromClaims(ctx, externalID, tenantID, email, displayName)
+	if err != nil {
+		return err
+	}
+	if err := a.subs.CreateDefaultSubscriptions(ctx, user.ID, user.TenantID); err != nil {
+		log.Printf("warning: failed to create default subscriptions for user %s: %v", user.ID, err)
+	}
+	return nil
 }

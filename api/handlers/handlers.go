@@ -44,5 +44,14 @@ func All() []rocco.Endpoint {
 		// Users
 		listUsersInTenant,
 		getMyProfile,
+		// Subscriptions
+		listMySubscriptions,
+		createSubscription,
+		deleteSubscription,
+		// Notifications
+		listNotifications,
+		updateNotificationStatus,
+		bulkMarkRead,
+		notificationStream,
 	}
 }

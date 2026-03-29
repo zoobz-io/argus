@@ -80,3 +80,20 @@ func NewTag() *models.Tag {
 		CreatedAt: FixtureTime, UpdatedAt: FixtureTime2,
 	}
 }
+
+func NewSubscription() *models.Subscription {
+	return &models.Subscription{
+		ID: "s1", UserID: "u1", TenantID: "t1",
+		EventType: "ingest.completed", Channel: models.SubscriptionChannelInbox,
+		CreatedAt: FixtureTime, UpdatedAt: FixtureTime2,
+	}
+}
+
+func NewNotification() *models.Notification {
+	return &models.Notification{
+		ID: "n1", UserID: "u1", TenantID: "t1",
+		Type: models.NotificationIngestCompleted, Status: models.NotificationUnread,
+		DocumentID: "d1", VersionID: "v1", Message: "Ingest completed",
+		CreatedAt: FixtureTime,
+	}
+}
