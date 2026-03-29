@@ -314,6 +314,49 @@ services:
     volumes:
       - .:/app
 
+  connector:
+    build:
+      context: .
+      dockerfile: tools/dev/Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    environment:
+      APP_DB_HOST: postgres
+      APP_DB_PORT: "5432"
+      APP_DB_NAME: argus
+      APP_DB_USER: argus
+      APP_DB_PASSWORD: argus
+      APP_DB_SSLMODE: disable
+      APP_REDIS_ADDR: redis:6379
+      APP_STORAGE_ENDPOINT: minio:9000
+      APP_STORAGE_ACCESS_KEY: argus
+      APP_STORAGE_SECRET_KEY: argusdev
+      APP_STORAGE_BUCKET: argus
+      APP_STORAGE_USE_SSL: "false"
+      APP_OPENSEARCH_ADDR: http://opensearch:9200
+      APP_GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      APP_GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET}"
+      APP_MICROSOFT_CLIENT_ID: "${MICROSOFT_CLIENT_ID}"
+      APP_MICROSOFT_CLIENT_SECRET: "${MICROSOFT_CLIENT_SECRET}"
+      APP_DROPBOX_CLIENT_ID: "${DROPBOX_CLIENT_ID}"
+      APP_DROPBOX_CLIENT_SECRET: "${DROPBOX_CLIENT_SECRET}"
+      APP_CONNECTOR_POLL_INTERVAL: "60s"
+      APP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: argus-connector
+    command: ["go", "run", "./cmd/connector"]
+    volumes:
+      - .:/app
+
   notifier:
     build:
       context: .
