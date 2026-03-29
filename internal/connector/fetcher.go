@@ -87,7 +87,7 @@ func (f *Fetcher) HandleFetch(ctx context.Context, msg events.FetchMessage) erro
 
 	// Persist refreshed credentials if returned.
 	if updatedCreds != nil {
-		err = f.creds.Update(ctx, msg.ProviderID, updatedCreds)
+		err = f.creds.Update(ctx, msg.TenantID, msg.ProviderID, updatedCreds)
 		if err != nil {
 			return fmt.Errorf("updating credentials: %w", err)
 		}

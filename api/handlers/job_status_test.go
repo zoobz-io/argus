@@ -21,7 +21,7 @@ import (
 // --- Clone ---
 
 func TestJobStatusSSE_Clone(t *testing.T) {
-	orig := JobStatusSSE{JobID: "j1", Status: "pending", Stage: "started", Error: ""}
+	orig := wire.JobStatusSSE{JobID: "j1", Status: "pending", Stage: "started", Error: ""}
 	if orig.Clone() != orig {
 		t.Error("clone mismatch")
 	}
@@ -90,7 +90,7 @@ func TestJobStatus_NotFound(t *testing.T) {
 	if evts[0].Event != "error" {
 		t.Errorf("expected event type %q, got %q", "error", evts[0].Event)
 	}
-	var evt JobStatusSSE
+	var evt wire.JobStatusSSE
 	if err := evts[0].DecodeJSON(&evt); err != nil {
 		t.Fatalf("failed to decode error event: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestJobStatus_AlreadyCompleted(t *testing.T) {
 		t.Errorf("event 1: expected type %q, got %q", "done", evts[1].Event)
 	}
 
-	var status JobStatusSSE
+	var status wire.JobStatusSSE
 	if err := evts[0].DecodeJSON(&status); err != nil {
 		t.Fatalf("failed to decode status event: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestJobStatus_AlreadyFailed_ErrorSanitized(t *testing.T) {
 		t.Fatalf("expected 2 events, got %d", len(evts))
 	}
 
-	var done JobStatusSSE
+	var done wire.JobStatusSSE
 	if err := evts[1].DecodeJSON(&done); err != nil {
 		t.Fatalf("failed to decode done event: %v", err)
 	}

@@ -18,7 +18,7 @@ import (
 )
 
 func TestNotificationSSE_Clone(t *testing.T) {
-	orig := NotificationSSE{NotificationID: "n1", Type: "ingest.completed", Message: "hello"}
+	orig := wire.NotificationSSE{NotificationID: "n1", Type: "ingest.completed", Message: "hello"}
 	if orig.Clone() != orig {
 		t.Error("clone mismatch")
 	}
@@ -106,7 +106,7 @@ func TestNotificationStream_ReceivesHint(t *testing.T) {
 	for _, evt := range evts {
 		if evt.Event == "notification" {
 			found = true
-			var sse NotificationSSE
+			var sse wire.NotificationSSE
 			if err := evt.DecodeJSON(&sse); err != nil {
 				t.Fatalf("decode: %v", err)
 			}

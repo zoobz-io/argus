@@ -245,7 +245,7 @@ func TestFetcher_HandleFetch_CredentialRefresh(t *testing.T) {
 		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
 			return &models.Provider{ID: id, Credentials: `{"access_token":"old-token","refresh_token":"old-refresh"}`}, nil
 		},
-		onUpdateProviderCredentials: func(_ context.Context, _, _ string) error {
+		onUpdateProviderCredentials: func(_ context.Context, _, _, _ string) error {
 			credsUpdated = true
 			return nil
 		},
@@ -481,7 +481,7 @@ func TestFetcher_HandleFetch_CredentialUpdateError(t *testing.T) {
 		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
 			return &models.Provider{ID: id, Credentials: `{"access_token":"old"}`}, nil
 		},
-		onUpdateProviderCredentials: func(_ context.Context, _, _ string) error {
+		onUpdateProviderCredentials: func(_ context.Context, _, _, _ string) error {
 			return errors.New("creds persist error")
 		},
 	}

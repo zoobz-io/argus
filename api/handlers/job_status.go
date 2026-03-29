@@ -8,30 +8,18 @@ import (
 	"github.com/zoobz-io/sum"
 
 	"github.com/zoobz-io/argus/api/contracts"
+	"github.com/zoobz-io/argus/api/wire"
 	"github.com/zoobz-io/argus/events"
 	"github.com/zoobz-io/argus/models"
 )
 
-// JobStatusSSE is the SSE event payload sent to clients.
-type JobStatusSSE struct {
-	JobID  string `json:"job_id"`
-	Status string `json:"status"`
-	Stage  string `json:"stage,omitempty"`
-	Error  string `json:"error,omitempty"`
-}
-
-// Clone returns a copy of the event.
-func (e JobStatusSSE) Clone() JobStatusSSE {
-	return e
-}
-
 const sanitizedErrorMessage = "ingestion failed"
 
-var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
+var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, wire.JobStatusSSE](
 	"job-status",
 	"GET",
 	"/jobs/{id}/status",
-	func(r *rocco.Request[rocco.NoBody], stream rocco.Stream[JobStatusSSE]) error {
+	func(r *rocco.Request[rocco.NoBody], stream rocco.Stream[wire.JobStatusSSE]) error {
 		jobID := pathID(r.Params, "id")
 		tid := tenantID(r.Identity)
 
@@ -44,7 +32,7 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 				return
 			}
 
-			err := stream.SendEvent(evt.Stage, JobStatusSSE{
+			err := stream.SendEvent(evt.Stage, wire.JobStatusSSE{
 				JobID:  evt.JobID,
 				Status: evt.Stage,
 				Stage:  evt.Stage,
@@ -55,7 +43,7 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 			}
 
 			if evt.Stage == "completed" || evt.Stage == "failed" {
-				_ = stream.SendEvent("done", JobStatusSSE{
+				_ = stream.SendEvent("done", wire.JobStatusSSE{
 					JobID:  evt.JobID,
 					Status: evt.Stage,
 					Error:  sanitizeError(evt.Error),
@@ -71,7 +59,7 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 		reader := sum.MustUse[contracts.JobReader](r)
 		job, err := reader.GetJobByTenant(r, jobID, tid)
 		if err != nil {
-			return stream.SendEvent("error", JobStatusSSE{
+			return stream.SendEvent("error", wire.JobStatusSSE{
 				JobID:  jobID,
 				Status: "not_found",
 				Error:  "job not found",
@@ -79,7 +67,7 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 		}
 
 		// 3. Send current status as initial event.
-		if err := stream.SendEvent("status", JobStatusSSE{
+		if err := stream.SendEvent("status", wire.JobStatusSSE{
 			JobID:  job.ID,
 			Status: string(job.Status),
 		}); err != nil {
@@ -88,7 +76,7 @@ var jobStatusStream = rocco.NewStreamHandler[rocco.NoBody, JobStatusSSE](
 
 		// 4. If already terminal, send done and close.
 		if job.Status == models.JobCompleted || job.Status == models.JobFailed {
-			return stream.SendEvent("done", JobStatusSSE{
+			return stream.SendEvent("done", wire.JobStatusSSE{
 				JobID:  job.ID,
 				Status: string(job.Status),
 				Error:  sanitizeJobError(job),

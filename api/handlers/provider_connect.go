@@ -109,7 +109,7 @@ var providerConnect = rocco.POST[wire.ConnectRequest, wire.ConnectResponse]("/pr
 		credentialsJSON = r.Body.Code
 	}
 
-	if updateErr := store.UpdateProviderCredentials(r, providerID, credentialsJSON); updateErr != nil {
+	if updateErr := store.UpdateProviderCredentials(r, tid, providerID, credentialsJSON); updateErr != nil {
 		return wire.ConnectResponse{}, updateErr
 	}
 

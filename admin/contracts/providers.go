@@ -12,8 +12,8 @@ type Providers interface {
 	GetProvider(ctx context.Context, id string) (*models.Provider, error)
 	// CreateProvider creates a new provider for a tenant.
 	CreateProvider(ctx context.Context, tenantID string, providerType models.ProviderType, name string, credentials string) (*models.Provider, error)
-	// UpdateProvider updates an existing provider.
-	UpdateProvider(ctx context.Context, id string, providerType models.ProviderType, name string, credentials string) (*models.Provider, error)
+	// UpdateProvider updates an existing provider scoped to a tenant.
+	UpdateProvider(ctx context.Context, tenantID, id string, providerType models.ProviderType, name string, credentials string) (*models.Provider, error)
 	// DeleteProvider removes a provider.
 	DeleteProvider(ctx context.Context, id string) error
 	// ListProviders retrieves a paginated list of all providers.

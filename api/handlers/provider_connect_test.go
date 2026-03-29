@@ -186,7 +186,7 @@ func TestProviderConnect_OAuth_Success(t *testing.T) {
 		OnGetProviderByTenant: func(_ context.Context, id, _ string) (*models.Provider, error) {
 			return &models.Provider{ID: id, Type: models.ProviderGoogleDrive, TenantID: "tenant-1"}, nil
 		},
-		OnUpdateProviderCredentials: func(_ context.Context, _, _ string) error {
+		OnUpdateProviderCredentials: func(_ context.Context, _, _, _ string) error {
 			return nil
 		},
 	}
@@ -238,7 +238,7 @@ func TestProviderConnect_StaticCredentials(t *testing.T) {
 		OnGetProviderByTenant: func(_ context.Context, id, _ string) (*models.Provider, error) {
 			return &models.Provider{ID: id, Type: models.ProviderS3, TenantID: "tenant-1"}, nil
 		},
-		OnUpdateProviderCredentials: func(_ context.Context, _, gotCreds string) error {
+		OnUpdateProviderCredentials: func(_ context.Context, _, _, gotCreds string) error {
 			if gotCreds != creds {
 				t.Errorf("creds: got %q, want %q", gotCreds, creds)
 			}

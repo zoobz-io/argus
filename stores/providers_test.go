@@ -138,7 +138,7 @@ func TestProviders_UpdateProvider(t *testing.T) {
 		{ID: "p-1", TenantID: "t-1", Type: models.ProviderOneDrive, Name: "New Drive", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
 	})
 
-	provider, err := store.UpdateProvider(context.Background(), "p-1", models.ProviderOneDrive, "New Drive", "new-secret")
+	provider, err := store.UpdateProvider(context.Background(), "t-1", "p-1", models.ProviderOneDrive, "New Drive", "new-secret")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestProviders_UpdateProvider_GetError(t *testing.T) {
 
 	mock.ExpectQuery().WithError(errors.New("not found"))
 
-	_, err := store.UpdateProvider(context.Background(), "p-1", models.ProviderOneDrive, "New Drive", "new-secret")
+	_, err := store.UpdateProvider(context.Background(), "t-1", "p-1", models.ProviderOneDrive, "New Drive", "new-secret")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -175,7 +175,7 @@ func TestProviders_UpdateProvider_SetError(t *testing.T) {
 	})
 	mock.ExpectExec().WithError(errors.New("constraint violation"))
 
-	_, err := store.UpdateProvider(context.Background(), "p-1", models.ProviderOneDrive, "New Drive", "new-secret")
+	_, err := store.UpdateProvider(context.Background(), "t-1", "p-1", models.ProviderOneDrive, "New Drive", "new-secret")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -365,7 +365,7 @@ func TestProviders_UpdateProviderCredentials(t *testing.T) {
 		{ID: "p-1", TenantID: "t-1", Type: models.ProviderGoogleDrive, Name: "My Drive", Credentials: creds, Active: true, CreatedAt: ts, UpdatedAt: ts},
 	})
 
-	err := store.UpdateProviderCredentials(context.Background(), "p-1", "new-creds")
+	err := store.UpdateProviderCredentials(context.Background(), "t-1", "p-1", "new-creds")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestProviders_UpdateProviderCredentials_Error(t *testing.T) {
 
 	mock.ExpectQuery().WithError(errors.New("not found"))
 
-	err := store.UpdateProviderCredentials(context.Background(), "missing", "creds")
+	err := store.UpdateProviderCredentials(context.Background(), "t-1", "missing", "creds")
 	if err == nil {
 		t.Fatal("expected error")
 	}
