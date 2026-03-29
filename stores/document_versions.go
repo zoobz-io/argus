@@ -55,6 +55,14 @@ func (s *DocumentVersions) ListDocumentVersions(ctx context.Context, page models
 	return &models.OffsetResult[models.DocumentVersion]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
+// CreateDocumentVersion inserts a new document version. The caller must set all fields including the ID.
+func (s *DocumentVersions) CreateDocumentVersion(ctx context.Context, ver *models.DocumentVersion) (*models.DocumentVersion, error) {
+	if err := s.Set(ctx, "", ver); err != nil {
+		return nil, fmt.Errorf("creating document version: %w", err)
+	}
+	return ver, nil
+}
+
 // GetVersionContent retrieves the raw bytes for a document version from object storage.
 func (s *DocumentVersions) GetVersionContent(ctx context.Context, objectKey string) ([]byte, error) {
 	data, _, err := s.bucket.Get(ctx, objectKey)

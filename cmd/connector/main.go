@@ -4,12 +4,13 @@
 // ingestion pipeline. It watches for changes via provider polling,
 // downloads content, stages it in MinIO, and publishes to the ingest queue.
 //
-// This PR: skeleton with infrastructure setup and credential management.
-// Sync and fetch will be added in subsequent PRs.
+// Infrastructure setup, credential management, and polling-based change
+// detection are in place. Content fetch and ingest queue publishing follow.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/internal/boot"
 	"github.com/zoobz-io/argus/internal/connector"
+	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/provider"
 	"github.com/zoobz-io/argus/provider/googledrive"
 	"github.com/zoobz-io/argus/provider/onedrive"
@@ -95,7 +97,7 @@ func run() error {
 		return err
 	}
 	defer func() { _ = redisClient.Close() }()
-	_ = redisClient // Used by herald (PR 2).
+	_ = redisClient // Used by herald (PR 3).
 
 	searchProvider, err := boot.OpenSearch(ctx)
 	if err != nil {
@@ -146,7 +148,6 @@ func run() error {
 	// =========================================================================
 
 	credManager := connector.NewCredentialManager(allStores.Providers)
-	_ = credManager // Used by sync loop (PR 2).
 
 	// =========================================================================
 	// 6. Freeze and Initialize Observability
@@ -168,11 +169,67 @@ func run() error {
 	_ = ap
 
 	// =========================================================================
-	// 7. Block Until Shutdown
+	// 7. Start Syncer
+	// =========================================================================
+
+	connectorCfg := sum.MustUse[config.Connector](ctx)
+	syncStore := &syncStoreAdapter{
+		wp:   allStores.WatchedPaths,
+		docs: allStores.Documents,
+		vers: allStores.DocumentVersions,
+		prov: allStores.Providers,
+	}
+	syncer := connector.NewSyncer(syncStore, credManager, registry, connectorCfg.PollInterval)
+
+	syncErr := make(chan error, 1)
+	go func() {
+		syncErr <- syncer.Run(ctx)
+	}()
+
+	// =========================================================================
+	// 8. Block Until Shutdown
 	// =========================================================================
 
 	log.Println("connector ready")
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case err := <-syncErr:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("syncer error: %w", err)
+		}
+	}
 	log.Println("shutting down...")
 	return nil
+}
+
+// syncStoreAdapter composes individual stores to satisfy connector.SyncStore.
+type syncStoreAdapter struct {
+	wp   *stores.WatchedPaths
+	docs *stores.Documents
+	vers *stores.DocumentVersions
+	prov *stores.Providers
+}
+
+func (a *syncStoreAdapter) ListActiveWatchedPaths(ctx context.Context) ([]*models.WatchedPath, error) {
+	return a.wp.ListActiveWatchedPaths(ctx)
+}
+
+func (a *syncStoreAdapter) UpdateSyncState(ctx context.Context, id string, syncState *string) error {
+	return a.wp.UpdateSyncState(ctx, id, syncState)
+}
+
+func (a *syncStoreAdapter) GetDocumentByExternalID(ctx context.Context, tenantID, externalID string) (*models.Document, error) {
+	return a.docs.GetDocumentByExternalID(ctx, tenantID, externalID)
+}
+
+func (a *syncStoreAdapter) CreateDocument(ctx context.Context, doc *models.Document) (*models.Document, error) {
+	return a.docs.CreateDocument(ctx, doc)
+}
+
+func (a *syncStoreAdapter) CreateDocumentVersion(ctx context.Context, ver *models.DocumentVersion) (*models.DocumentVersion, error) {
+	return a.vers.CreateDocumentVersion(ctx, ver)
+}
+
+func (a *syncStoreAdapter) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
+	return a.prov.GetProvider(ctx, id)
 }
