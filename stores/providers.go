@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -59,6 +60,44 @@ func (s *Providers) UpdateProvider(ctx context.Context, id string, providerType 
 		return nil, fmt.Errorf("updating provider: %w", err)
 	}
 	return p, nil
+}
+
+// GetProviderByTenant retrieves a provider by ID scoped to a tenant.
+// Returns not-found if the provider does not exist or belongs to a different tenant.
+func (s *Providers) GetProviderByTenant(ctx context.Context, id, tenantID string) (*models.Provider, error) {
+	params := map[string]any{"id": id, "tenant_id": tenantID}
+	q := s.Query().
+		Where("id", "=", "id").
+		Where("tenant_id", "=", "tenant_id").
+		Limit(1)
+	results, err := q.Exec(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("getting provider by tenant: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("provider not found")
+	}
+	return results[0], nil
+}
+
+// UpdateProviderCredentials stores credentials and marks the provider active.
+func (s *Providers) UpdateProviderCredentials(ctx context.Context, id, credentials string) error {
+	params := map[string]any{
+		"id":          id,
+		"credentials": credentials,
+		"active":      true,
+		"updated_at":  time.Now(),
+	}
+	q := s.Modify().
+		Set("credentials", "credentials").
+		Set("active", "active").
+		Set("updated_at", "updated_at").
+		Where("id", "=", "id")
+	_, err := q.Exec(ctx, params)
+	if err != nil {
+		return fmt.Errorf("updating provider credentials: %w", err)
+	}
+	return nil
 }
 
 // DeleteProvider removes a provider.
