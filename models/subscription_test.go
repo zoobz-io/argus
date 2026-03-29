@@ -50,3 +50,30 @@ func TestSubscription_Clone_NilFilters(t *testing.T) {
 		t.Error("expected nil Filters on clone")
 	}
 }
+
+func TestSubscription_Clone_WebhookEndpointID(t *testing.T) {
+	hookID := "h-1"
+	s := Subscription{
+		ID:                "sub-3",
+		Channel:           SubscriptionChannelWebhook,
+		WebhookEndpointID: &hookID,
+	}
+	clone := s.Clone()
+
+	if clone.WebhookEndpointID == nil || *clone.WebhookEndpointID != "h-1" {
+		t.Error("Clone did not copy WebhookEndpointID")
+	}
+
+	*clone.WebhookEndpointID = "mutated"
+	if *s.WebhookEndpointID != "h-1" {
+		t.Error("mutating clone WebhookEndpointID leaked to original")
+	}
+}
+
+func TestSubscription_Clone_NilWebhookEndpointID(t *testing.T) {
+	s := Subscription{ID: "sub-4"}
+	clone := s.Clone()
+	if clone.WebhookEndpointID != nil {
+		t.Error("expected nil WebhookEndpointID on clone")
+	}
+}

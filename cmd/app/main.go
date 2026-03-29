@@ -164,6 +164,8 @@ func run() error {
 	sum.Register[apicontracts.Subscriptions](k, allStores.Subscriptions)
 	sum.Register[apicontracts.Notifications](k, allStores.Notifications)
 	sum.Register[apicontracts.AuditLog](k, allStores.Audit)
+	sum.Register[apicontracts.Hooks](k, allStores.Hooks)
+	sum.Register[apicontracts.Deliveries](k, allStores.Deliveries)
 
 	// Admin API contracts
 	sum.Register[admincontracts.Tenants](k, allStores.Tenants)
@@ -177,6 +179,7 @@ func run() error {
 	sum.Register[admincontracts.Users](k, allStores.Users)
 	sum.Register[admincontracts.Subscriptions](k, allStores.AdminSubscriptions)
 	sum.Register[admincontracts.AuditLog](k, allStores.Audit)
+	sum.Register[admincontracts.Hooks](k, allStores.AdminHooks)
 
 	// Internal contracts — enqueuer needs versions, documents, jobs.
 	// Classifier needed by vocabulary pipeline.
@@ -213,6 +216,8 @@ func run() error {
 	sum.NewBoundary[models.DocumentVersion](k)
 	sum.NewBoundary[models.User](k)
 	sum.NewBoundary[models.Subscription](k)
+	sum.NewBoundary[models.Hook](k)
+	sum.NewBoundary[models.Delivery](k)
 	wire.RegisterBoundaries(k)
 
 	// =========================================================================

@@ -93,15 +93,24 @@ func run() error {
 	notifStore := stores.NewNotifications(searchProvider)
 	auditStore := stores.NewAudit(searchProvider)
 
+	deliveryStore := stores.NewDeliveries(db, renderer)
+	hookStore := stores.NewHooks(db, renderer)
+
 	sum.Register[intcontracts.NotifySubscriptions](k, subStore)
 	sum.Register[intcontracts.NotifyIndexer](k, notifStore)
 	sum.Register[intcontracts.AuditIndexer](k, auditStore)
+	sum.Register[intcontracts.NotifyHookLoader](k, hookStore)
+	sum.Register[intcontracts.NotifyDeliveryLogger](k, deliveryStore)
+
+	// Model boundaries for cereal encryption (hooks have encrypted secrets).
+	sum.NewBoundary[models.Hook](k)
 
 	// =========================================================================
-	// 4. Create Pipeline and Freeze
+	// 4. Create Pipelines and Freeze
 	// =========================================================================
 
-	pipeline := notify.New()
+	inboxPipeline := notify.New()
+	webhookPipeline := notify.NewWebhookPipeline()
 	sum.Freeze(k)
 
 	// =========================================================================
@@ -165,7 +174,14 @@ func run() error {
 			return
 		}
 		for _, item := range result.Value() {
-			if _, err := pipeline.Process(ctx, item); err != nil {
+			var err error
+			switch item.Subscription.Channel {
+			case models.SubscriptionChannelWebhook:
+				_, err = webhookPipeline.Process(ctx, item)
+			default:
+				_, err = inboxPipeline.Process(ctx, item)
+			}
+			if err != nil {
 				capitan.Error(ctx, events.NotifierFanOutError,
 					events.NotifierTypeKey.Field(string(item.Notification.Type)),
 					events.NotifierErrorKey.Field(err),

@@ -23,11 +23,16 @@ type Stores struct {
 	AdminSubscriptions *AdminSubscriptions
 	Notifications      *Notifications
 	Audit              *Audit
+	Hooks              *Hooks
+	AdminHooks         *AdminHooks
+	Deliveries         *Deliveries
 }
 
 // New initializes all stores and returns an aggregated Stores instance.
 func New(db *sqlx.DB, renderer astql.Renderer, bucket grub.BucketProvider, searchProvider grub.SearchProvider) *Stores {
 	subs := NewSubscriptions(db, renderer)
+	deliveries := NewDeliveries(db, renderer)
+	hooks := NewHooks(db, renderer)
 	return &Stores{
 		Tenants:               NewTenants(db, renderer),
 		Providers:             NewProviders(db, renderer),
@@ -43,5 +48,8 @@ func New(db *sqlx.DB, renderer astql.Renderer, bucket grub.BucketProvider, searc
 		AdminSubscriptions:    &AdminSubscriptions{subs},
 		Notifications:         NewNotifications(searchProvider),
 		Audit:                 NewAudit(searchProvider),
+		Hooks:                 hooks,
+		AdminHooks:            &AdminHooks{Hooks: hooks, deliveries: deliveries},
+		Deliveries:            deliveries,
 	}
 }

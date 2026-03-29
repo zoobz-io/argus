@@ -44,7 +44,7 @@ var createSubscription = rocco.POST[wire.SubscriptionRequest, wire.SubscriptionR
 	}
 
 	store := sum.MustUse[contracts.Subscriptions](r)
-	sub, err := store.CreateSubscription(r, tid, user.ID, r.Body.EventType, r.Body.Channel)
+	sub, err := store.CreateSubscription(r, tid, user.ID, r.Body.EventType, r.Body.Channel, r.Body.WebhookEndpointID)
 	if err != nil {
 		return wire.SubscriptionResponse{}, err
 	}

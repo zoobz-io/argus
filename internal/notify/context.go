@@ -9,9 +9,15 @@ import "github.com/zoobz-io/argus/models"
 
 // FanOutItem carries data through the notification fan-out pipeline stages.
 type FanOutItem struct {
-	Notification *models.Notification
-	Subscription *models.Subscription
-	EventID      string
+	Notification       *models.Notification
+	Subscription       *models.Subscription
+	WebhookHook        *models.Hook // Loaded by sign stage, reused by deliver stage.
+	WebhookDeliveryErr *string
+	EventID            string
+	WebhookSignature   string
+	WebhookTimestamp   string // Unix timestamp included in HMAC computation.
+	WebhookPayload     []byte
+	WebhookStatusCode  int
 }
 
 // Clone returns a deep copy of the fan-out item for pipz compatibility.

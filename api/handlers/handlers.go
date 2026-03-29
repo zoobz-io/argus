@@ -55,5 +55,10 @@ func All() []rocco.Endpoint {
 		notificationStream,
 		// Audit
 		listAuditLog,
+		// Hooks
+		createHook,
+		listHooks,
+		deleteHook,
+		listDeliveries,
 	}
 }

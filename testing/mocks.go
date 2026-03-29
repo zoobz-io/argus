@@ -44,6 +44,11 @@ var (
 	_ admincontracts.Subscriptions        = (*MockAdminSubscriptions)(nil)
 	_ apicontracts.Subscriptions          = (*MockSubscriptions)(nil)
 	_ apicontracts.Notifications          = (*MockNotifications)(nil)
+	_ apicontracts.Hooks                  = (*MockHooks)(nil)
+	_ apicontracts.Deliveries             = (*MockDeliveries)(nil)
+	_ admincontracts.Hooks                = (*MockAdminHooks)(nil)
+	_ intcontracts.NotifyHookLoader       = (*MockHookLoader)(nil)
+	_ intcontracts.NotifyDeliveryLogger   = (*MockDeliveryLogger)(nil)
 )
 
 // MockAuditLog satisfies api/contracts.AuditLog.
@@ -440,7 +445,7 @@ func (m *MockVocabulary) ProcessUpdate(ctx context.Context, id, name, descriptio
 type MockSubscriptions struct {
 	OnGetSubscriptionByTenant func(ctx context.Context, tenantID, id string) (*models.Subscription, error)
 	OnListSubscriptionsByUser func(ctx context.Context, tenantID, userID string, page models.OffsetPage) (*models.OffsetResult[models.Subscription], error)
-	OnCreateSubscription      func(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error)
+	OnCreateSubscription      func(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel, webhookEndpointID string) (*models.Subscription, error)
 	OnDeleteSubscription      func(ctx context.Context, tenantID, userID, id string) error
 }
 
@@ -452,8 +457,8 @@ func (m *MockSubscriptions) ListSubscriptionsByUser(ctx context.Context, tenantI
 	if m.OnListSubscriptionsByUser != nil { return m.OnListSubscriptionsByUser(ctx, tenantID, userID, page) }
 	return &models.OffsetResult[models.Subscription]{Items: []*models.Subscription{}}, nil
 }
-func (m *MockSubscriptions) CreateSubscription(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error) {
-	if m.OnCreateSubscription != nil { return m.OnCreateSubscription(ctx, tenantID, userID, eventType, channel) }
+func (m *MockSubscriptions) CreateSubscription(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel, webhookEndpointID string) (*models.Subscription, error) {
+	if m.OnCreateSubscription != nil { return m.OnCreateSubscription(ctx, tenantID, userID, eventType, channel, webhookEndpointID) }
 	return &models.Subscription{}, nil
 }
 func (m *MockSubscriptions) DeleteSubscription(ctx context.Context, tenantID, userID, id string) error {
@@ -498,5 +503,85 @@ func (m *MockNotifications) UpdateStatus(ctx context.Context, tenantID, userID, 
 }
 func (m *MockNotifications) BulkUpdateStatus(ctx context.Context, tenantID, userID string, status models.NotificationStatus) error {
 	if m.OnBulkUpdateStatus != nil { return m.OnBulkUpdateStatus(ctx, tenantID, userID, status) }
+	return nil
+}
+
+// MockHooks satisfies api/contracts.Hooks.
+type MockHooks struct {
+	OnCreateHook        func(ctx context.Context, tenantID, userID, url string) (*models.Hook, error)
+	OnGetHookByTenant   func(ctx context.Context, tenantID, id string) (*models.Hook, error)
+	OnListHooksByTenant func(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Hook], error)
+	OnDeleteHook        func(ctx context.Context, tenantID, id string) error
+}
+
+func (m *MockHooks) CreateHook(ctx context.Context, tenantID, userID, url string) (*models.Hook, error) {
+	if m.OnCreateHook != nil { return m.OnCreateHook(ctx, tenantID, userID, url) }
+	return &models.Hook{}, nil
+}
+func (m *MockHooks) GetHookByTenant(ctx context.Context, tenantID, id string) (*models.Hook, error) {
+	if m.OnGetHookByTenant != nil { return m.OnGetHookByTenant(ctx, tenantID, id) }
+	return &models.Hook{}, nil
+}
+func (m *MockHooks) ListHooksByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Hook], error) {
+	if m.OnListHooksByTenant != nil { return m.OnListHooksByTenant(ctx, tenantID, page) }
+	return &models.OffsetResult[models.Hook]{Items: []*models.Hook{}}, nil
+}
+func (m *MockHooks) DeleteHook(ctx context.Context, tenantID, id string) error {
+	if m.OnDeleteHook != nil { return m.OnDeleteHook(ctx, tenantID, id) }
+	return nil
+}
+
+// MockDeliveries satisfies api/contracts.Deliveries.
+type MockDeliveries struct {
+	OnListByHook func(ctx context.Context, tenantID, hookID string, page models.OffsetPage) (*models.OffsetResult[models.Delivery], error)
+}
+
+func (m *MockDeliveries) ListByHook(ctx context.Context, tenantID, hookID string, page models.OffsetPage) (*models.OffsetResult[models.Delivery], error) {
+	if m.OnListByHook != nil { return m.OnListByHook(ctx, tenantID, hookID, page) }
+	return &models.OffsetResult[models.Delivery]{Items: []*models.Delivery{}}, nil
+}
+
+// MockAdminHooks satisfies admin/contracts.Hooks.
+type MockAdminHooks struct {
+	OnGetHook        func(ctx context.Context, id string) (*models.Hook, error)
+	OnListHooks      func(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Hook], error)
+	OnDeleteHook     func(ctx context.Context, id string) error
+	OnListDeliveries func(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Delivery], error)
+}
+
+func (m *MockAdminHooks) GetHook(ctx context.Context, id string) (*models.Hook, error) {
+	if m.OnGetHook != nil { return m.OnGetHook(ctx, id) }
+	return &models.Hook{}, nil
+}
+func (m *MockAdminHooks) ListHooks(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Hook], error) {
+	if m.OnListHooks != nil { return m.OnListHooks(ctx, page) }
+	return &models.OffsetResult[models.Hook]{Items: []*models.Hook{}}, nil
+}
+func (m *MockAdminHooks) DeleteHook(ctx context.Context, id string) error {
+	if m.OnDeleteHook != nil { return m.OnDeleteHook(ctx, id) }
+	return nil
+}
+func (m *MockAdminHooks) ListDeliveries(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Delivery], error) {
+	if m.OnListDeliveries != nil { return m.OnListDeliveries(ctx, page) }
+	return &models.OffsetResult[models.Delivery]{Items: []*models.Delivery{}}, nil
+}
+
+// MockHookLoader satisfies internal/contracts.NotifyHookLoader.
+type MockHookLoader struct {
+	OnGetWithSecret func(ctx context.Context, tenantID, id string) (*models.Hook, error)
+}
+
+func (m *MockHookLoader) GetWithSecret(ctx context.Context, tenantID, id string) (*models.Hook, error) {
+	if m.OnGetWithSecret != nil { return m.OnGetWithSecret(ctx, tenantID, id) }
+	return &models.Hook{}, nil
+}
+
+// MockDeliveryLogger satisfies internal/contracts.NotifyDeliveryLogger.
+type MockDeliveryLogger struct {
+	OnCreateDelivery func(ctx context.Context, hookID, eventID, tenantID string, statusCode, attempt int, deliveryErr *string) error
+}
+
+func (m *MockDeliveryLogger) CreateDelivery(ctx context.Context, hookID, eventID, tenantID string, statusCode, attempt int, deliveryErr *string) error {
+	if m.OnCreateDelivery != nil { return m.OnCreateDelivery(ctx, hookID, eventID, tenantID, statusCode, attempt, deliveryErr) }
 	return nil
 }

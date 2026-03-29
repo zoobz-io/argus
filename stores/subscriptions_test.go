@@ -44,7 +44,7 @@ func TestSubscriptions_CreateSubscription(t *testing.T) {
 	s := testSubscription()
 	mock.ExpectQuery().WithRows([]models.Subscription{s})
 
-	sub, err := store.CreateSubscription(context.Background(), "t-1", "u-1", "ingest.completed", models.SubscriptionChannelInbox)
+	sub, err := store.CreateSubscription(context.Background(), "t-1", "u-1", "ingest.completed", models.SubscriptionChannelInbox, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestSubscriptions_CreateSubscription_Error(t *testing.T) {
 
 	mock.ExpectExec().WithError(errors.New("duplicate"))
 
-	_, err := store.CreateSubscription(context.Background(), "t-1", "u-1", "ingest.completed", models.SubscriptionChannelInbox)
+	_, err := store.CreateSubscription(context.Background(), "t-1", "u-1", "ingest.completed", models.SubscriptionChannelInbox, "")
 	if err == nil {
 		t.Fatal("expected error")
 	}

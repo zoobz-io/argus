@@ -16,6 +16,7 @@ var (
 	ErrUserNotFound         = rocco.ErrNotFound.WithMessage("user not found")
 	ErrSubscriptionNotFound = rocco.ErrNotFound.WithMessage("subscription not found")
 	ErrNotificationNotFound = rocco.ErrNotFound.WithMessage("notification not found")
+	ErrHookNotFound         = rocco.ErrNotFound.WithMessage("hook not found")
 
 	ErrMissingRedirectURI      = rocco.ErrBadRequest.WithMessage("redirect_uri query parameter is required")
 	ErrInvalidRedirectURI      = rocco.ErrBadRequest.WithMessage("redirect_uri is not in the allowed list")
