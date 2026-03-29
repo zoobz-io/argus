@@ -476,3 +476,68 @@ func TestSyncer_PollPath_DedupByContentHash(t *testing.T) {
 		t.Error("should not create version when content hash matches latest")
 	}
 }
+
+func TestSyncer_PollAll_Success(t *testing.T) {
+	var polledPaths []string
+
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onListActiveWatchedPaths: func(_ context.Context) ([]*models.WatchedPath, error) {
+			return []*models.WatchedPath{
+				{ID: "wp-1", ProviderID: "prov-1", TenantID: "t-1", Path: "/docs", Active: true, SyncState: &syncToken},
+				{ID: "wp-2", ProviderID: "prov-1", TenantID: "t-1", Path: "/reports", Active: true, SyncState: &syncToken},
+			}, nil
+		},
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, path string, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			polledPaths = append(polledPaths, path)
+			return nil, "token-2", nil, nil
+		},
+	}
+
+	reg := provider.NewRegistry()
+	reg.Register(prov)
+
+	credStore := &mockProviderStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Credentials: `{"access_token":"token"}`}, nil
+		},
+	}
+	cm := NewCredentialManager(credStore)
+
+	syncer := NewSyncer(store, cm, reg, time.Minute)
+	syncer.pollAll(context.Background())
+
+	if len(polledPaths) != 2 {
+		t.Fatalf("expected 2 paths polled, got %d", len(polledPaths))
+	}
+}
+
+func TestSyncer_PollAll_ListError(t *testing.T) {
+	store := &mockSyncStore{
+		onListActiveWatchedPaths: func(_ context.Context) ([]*models.WatchedPath, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	syncer := NewSyncer(store, nil, nil, time.Minute)
+	// Should not panic — logs and returns.
+	syncer.pollAll(context.Background())
+}
+
+func TestSyncer_PollAll_Empty(t *testing.T) {
+	store := &mockSyncStore{
+		onListActiveWatchedPaths: func(_ context.Context) ([]*models.WatchedPath, error) {
+			return nil, nil
+		},
+	}
+
+	syncer := NewSyncer(store, nil, nil, time.Minute)
+	syncer.pollAll(context.Background())
+}
