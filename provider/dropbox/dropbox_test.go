@@ -122,9 +122,42 @@ func TestNormalizePath(t *testing.T) {
 		{"/Documents/Sub", "/Documents/Sub"},
 	}
 	for _, tt := range tests {
-		if got := normalizePath(tt.input); got != tt.expected {
+		got, err := normalizePath(tt.input)
+		if err != nil {
+			t.Errorf("normalizePath(%q) unexpected error: %v", tt.input, err)
+			continue
+		}
+		if got != tt.expected {
 			t.Errorf("normalizePath(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
+	}
+}
+
+func TestNormalizePath_RejectsTraversal(t *testing.T) {
+	traversals := []string{
+		"/..",
+		"/../..",
+		"/Documents/../../etc",
+		"/Documents/../../../etc/passwd",
+		"../..",
+		"../etc",
+	}
+	for _, input := range traversals {
+		_, err := normalizePath(input)
+		if err == nil {
+			t.Errorf("normalizePath(%q) should have returned an error for path traversal", input)
+		}
+	}
+}
+
+func TestNormalizePath_AllowsSafeDotDot(t *testing.T) {
+	// A path like /Documents/../Photos resolves to /Photos — still under root.
+	got, err := normalizePath("/Documents/../Photos")
+	if err != nil {
+		t.Fatalf("normalizePath(%q) unexpected error: %v", "/Documents/../Photos", err)
+	}
+	if got != "/Photos" {
+		t.Errorf("normalizePath(%q) = %q, want %q", "/Documents/../Photos", got, "/Photos")
 	}
 }
 

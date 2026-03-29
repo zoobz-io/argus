@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -92,7 +93,10 @@ func (d *Dropbox) List(ctx context.Context, creds *provider.Credentials, path st
 		return nil, nil, err
 	}
 
-	folderPath := normalizePath(path)
+	folderPath, pathErr := normalizePath(path)
+	if pathErr != nil {
+		return nil, nil, pathErr
+	}
 
 	var entries []provider.Entry
 	body := listFolderRequest{Path: folderPath}
@@ -278,7 +282,10 @@ func (d *Dropbox) doJSON(ctx context.Context, client *http.Client, url string, b
 // getLatestCursor calls list_folder/get_latest_cursor to get a cursor
 // without listing all entries.
 func (d *Dropbox) getLatestCursor(ctx context.Context, client *http.Client, path string) (string, error) {
-	folderPath := normalizePath(path)
+	folderPath, pathErr := normalizePath(path)
+	if pathErr != nil {
+		return "", pathErr
+	}
 	body := listFolderRequest{Path: folderPath}
 
 	respBody, err := d.doJSON(ctx, client, d.apiURL()+"/2/files/list_folder/get_latest_cursor", body)
@@ -311,14 +318,34 @@ func (d *Dropbox) contentURL() string {
 
 // normalizePath converts paths for the Dropbox API.
 // Empty string and "/" map to "" (root). All other paths must start with "/".
-func normalizePath(path string) string {
-	if path == "" || path == "/" {
-		return ""
+// Returns an error if the path attempts directory traversal above root.
+func normalizePath(p string) (string, error) {
+	if p == "" || p == "/" {
+		return "", nil
 	}
-	if !strings.HasPrefix(path, "/") {
-		return "/" + path
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
 	}
-	return path
+	// Walk segments to detect traversal above root before cleaning.
+	depth := 0
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "" || seg == "." {
+			continue
+		}
+		if seg == ".." {
+			depth--
+			if depth < 0 {
+				return "", fmt.Errorf("path traversal not allowed: %q", p)
+			}
+		} else {
+			depth++
+		}
+	}
+	cleaned := path.Clean(p)
+	if cleaned == "/" {
+		return "", nil
+	}
+	return cleaned, nil
 }
 
 // --- token conversion helpers ---
