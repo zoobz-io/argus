@@ -22,6 +22,10 @@ var testAdminEngine *rocco.Engine
 // testTenantID is the real tenant ID used for API handler tests.
 var testTenantID string
 
+// testUserID is the internal user ID created during engine init.
+// Tests that need the user's internal ID can reference this.
+var testUserID string
+
 // InitEngines creates a test tenant and rocco test engines wired to real handlers.
 // Must be called after InitStores.
 func InitEngines() error {
@@ -33,6 +37,13 @@ func InitEngines() error {
 		return fmt.Errorf("creating test tenant: %w", err)
 	}
 	testTenantID = tenant.ID
+
+	// Create a real user for API tests — handlers resolve user via GetUserByExternalID("user-1").
+	user, err := testStores.Users.CreateUser(ctx, testTenantID, "user-1", "test@example.com", "Test User", "viewer")
+	if err != nil {
+		return fmt.Errorf("creating test user: %w", err)
+	}
+	testUserID = user.ID
 
 	apiIdentity := rtesting.NewMockIdentity("user-1").WithTenantID(testTenantID)
 	testAPIEngine = rtesting.TestEngineWithAuth(func(_ context.Context, _ *http.Request) (rocco.Identity, error) {

@@ -30,10 +30,14 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
-	log.Println("creating opensearch index...")
+	log.Println("creating opensearch indices...")
 	if err := CreateOpenSearchIndex(ctx, testInfra.OpenSearchAddr); err != nil {
 		testInfra.Teardown(ctx)
 		log.Fatalf("failed to create opensearch index: %v", err)
+	}
+	if err := CreateNotificationsIndex(ctx, testInfra.OpenSearchAddr); err != nil {
+		testInfra.Teardown(ctx)
+		log.Fatalf("failed to create notifications index: %v", err)
 	}
 
 	log.Println("initializing stores...")
