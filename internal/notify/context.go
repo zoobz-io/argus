@@ -11,11 +11,11 @@ import "github.com/zoobz-io/argus/models"
 type FanOutItem struct {
 	Notification       *models.Notification
 	Subscription       *models.Subscription
-	WebhookHook        *models.Hook
+	WebhookHook        *models.Hook // Loaded by sign stage, reused by deliver stage.
 	WebhookDeliveryErr *string
 	EventID            string
 	WebhookSignature   string
-	WebhookTimestamp   string
+	WebhookTimestamp   string // Unix timestamp included in HMAC computation.
 	WebhookPayload     []byte
 	WebhookStatusCode  int
 }

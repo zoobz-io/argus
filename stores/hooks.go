@@ -70,12 +70,21 @@ func (s *Hooks) GetHookByTenant(ctx context.Context, tenantID, id string) (*mode
 	return results[0], nil
 }
 
-// GetWithSecret retrieves a hook by ID and tenant with its secret decrypted (for HMAC signing).
+// GetWithSecret retrieves a hook by ID scoped to a tenant, with its secret decrypted (for HMAC signing).
 func (s *Hooks) GetWithSecret(ctx context.Context, tenantID, id string) (*models.Hook, error) {
-	return s.Select().
+	params := map[string]any{"id": id, "tenant_id": tenantID}
+	results, err := s.Query().
 		Where("id", "=", "id").
 		Where("tenant_id", "=", "tenant_id").
-		Exec(ctx, map[string]any{"id": id, "tenant_id": tenantID})
+		Limit(1).
+		Exec(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("loading hook with secret: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("hook not found")
+	}
+	return results[0], nil
 }
 
 // ListHooksByTenant retrieves a paginated list of hooks for a tenant.

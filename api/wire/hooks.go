@@ -26,23 +26,19 @@ func (r *HookCreateRequest) Validate() error {
 	return validateWebhookURL(r.URL)
 }
 
-// validateWebhookURL ensures the URL uses HTTPS and does not point to a private IP.
+// validateWebhookURL enforces HTTPS scheme and blocks private/loopback destinations.
 func validateWebhookURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid url: %w", err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
 	if u.Scheme != "https" {
-		return fmt.Errorf("url must use https scheme")
+		return fmt.Errorf("webhook URL must use HTTPS scheme")
 	}
 	host := u.Hostname()
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return fmt.Errorf("cannot resolve host: %w", err)
-	}
-	for _, ip := range ips {
+	if ip := net.ParseIP(host); ip != nil {
 		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("url must not point to a private or loopback address")
+			return fmt.Errorf("webhook URL must not target private or loopback addresses")
 		}
 	}
 	return nil

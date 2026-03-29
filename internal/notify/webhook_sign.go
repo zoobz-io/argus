@@ -37,16 +37,16 @@ func newWebhookSignStage() pipz.Chainable[*FanOutItem] {
 
 			timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
+			// Include timestamp in signed content to bind signature to delivery time.
 			mac := hmac.New(sha256.New, []byte(hook.Secret))
-			mac.Write([]byte(timestamp))
-			mac.Write([]byte("."))
+			mac.Write([]byte(timestamp + "."))
 			mac.Write(payload)
 			signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 
 			item.WebhookHook = hook
-			item.WebhookTimestamp = timestamp
 			item.WebhookPayload = payload
 			item.WebhookSignature = signature
+			item.WebhookTimestamp = timestamp
 			return item, nil
 		},
 	)

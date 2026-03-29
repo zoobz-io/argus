@@ -20,7 +20,7 @@ type NotifyIndexer interface {
 
 // NotifyHookLoader defines hook lookup operations needed by the webhook delivery pipeline.
 type NotifyHookLoader interface {
-	// GetWithSecret retrieves a hook by ID and tenant including its secret for signing.
+	// GetWithSecret retrieves a hook by ID scoped to a tenant, including its secret for signing.
 	GetWithSecret(ctx context.Context, tenantID, id string) (*models.Hook, error)
 }
 
