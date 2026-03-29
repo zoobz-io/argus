@@ -83,6 +83,9 @@ func WithAPISubscriptions(m *MockSubscriptions) RegistryOption {
 func WithAPINotifications(m *MockNotifications) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.Notifications](k, m) }
 }
+func WithAPIAuditLog(m *MockAuditLog) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.AuditLog](k, m) }
+}
 
 // Admin contract options.
 
@@ -115,6 +118,9 @@ func WithAdminUsers(m *MockUsers) RegistryOption {
 }
 func WithAdminSubscriptions(m *MockAdminSubscriptions) RegistryOption {
 	return func(k sum.Key) { sum.Register[admincontracts.Subscriptions](k, m) }
+}
+func WithAdminAuditLog(m *MockAdminAuditLog) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.AuditLog](k, m) }
 }
 
 // Internal contract options.

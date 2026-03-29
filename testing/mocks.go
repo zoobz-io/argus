@@ -16,6 +16,8 @@ import (
 
 // Compile-time interface assertions — prevents mock drift.
 var (
+	_ apicontracts.AuditLog               = (*MockAuditLog)(nil)
+	_ admincontracts.AuditLog             = (*MockAdminAuditLog)(nil)
 	_ admincontracts.Tenants              = (*MockTenants)(nil)
 	_ apicontracts.Tenants                = (*MockTenants)(nil)
 	_ admincontracts.Providers            = (*MockProviders)(nil)
@@ -43,6 +45,26 @@ var (
 	_ apicontracts.Subscriptions          = (*MockSubscriptions)(nil)
 	_ apicontracts.Notifications          = (*MockNotifications)(nil)
 )
+
+// MockAuditLog satisfies api/contracts.AuditLog.
+type MockAuditLog struct {
+	OnSearch func(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error)
+}
+
+func (m *MockAuditLog) Search(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+	if m.OnSearch != nil { return m.OnSearch(ctx, params) }
+	return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}}, nil
+}
+
+// MockAdminAuditLog satisfies admin/contracts.AuditLog.
+type MockAdminAuditLog struct {
+	OnSearch func(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error)
+}
+
+func (m *MockAdminAuditLog) Search(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+	if m.OnSearch != nil { return m.OnSearch(ctx, params) }
+	return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}}, nil
+}
 
 // MockTenants satisfies both api/contracts.Tenants and admin/contracts.Tenants.
 type MockTenants struct {
