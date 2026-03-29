@@ -14,7 +14,10 @@ const (
 	MaskSecret cereal.MaskType = "secret"
 )
 
-// urlMasker masks URLs: https://example.com/path -> https://e***.com/***
+// redacted is the default replacement for masked values.
+const redacted = "***"
+
+// urlMasker masks URLs: https://example.com/path -> https://e***/***
 type urlMasker struct{}
 
 // URLMasker returns a masker for URLs.
@@ -25,14 +28,14 @@ func URLMasker() cereal.Masker {
 func (m *urlMasker) Mask(value string) (string, error) {
 	u, err := url.Parse(value)
 	if err != nil || u.Host == "" {
-		return "***", nil
+		return redacted, nil
 	}
 	host := u.Hostname()
-	masked := string(host[0]) + "***"
+	masked := string(host[0]) + redacted
 	if port := u.Port(); port != "" {
 		masked += ":" + port
 	}
-	return u.Scheme + "://" + masked + "/***", nil
+	return u.Scheme + "://" + masked + "/" + redacted, nil
 }
 
 // secretMasker fully redacts secret values.
@@ -45,7 +48,7 @@ func SecretMasker() cereal.Masker {
 
 func (m *secretMasker) Mask(value string) (string, error) {
 	if len(value) == 0 {
-		return "***", nil
+		return redacted, nil
 	}
 	return strings.Repeat("*", len(value)), nil
 }
