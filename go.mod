@@ -103,6 +103,7 @@ require (
 	github.com/zoobz-io/sentinel v1.0.4 // indirect
 	github.com/zoobz-io/slush v0.0.3 // indirect
 	github.com/zoobz-io/soy v1.0.8 // indirect
+	github.com/zoobz-io/streamz v1.0.7 // indirect
 	github.com/zoobz-io/vecna v0.0.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.39.0 // indirect

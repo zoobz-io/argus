@@ -77,6 +77,12 @@ func WithStateSigner(signer *oauth.StateSigner) RegistryOption {
 func WithAPIUsers(m *MockUsers) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.Users](k, m) }
 }
+func WithAPISubscriptions(m *MockSubscriptions) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Subscriptions](k, m) }
+}
+func WithAPINotifications(m *MockNotifications) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Notifications](k, m) }
+}
 
 // Admin contract options.
 
@@ -106,6 +112,9 @@ func WithAdminVocabulary(m *MockVocabulary) RegistryOption {
 }
 func WithAdminUsers(m *MockUsers) RegistryOption {
 	return func(k sum.Key) { sum.Register[admincontracts.Users](k, m) }
+}
+func WithAdminSubscriptions(m *MockAdminSubscriptions) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Subscriptions](k, m) }
 }
 
 // Internal contract options.
@@ -150,6 +159,7 @@ func SetupRegistry(t *testing.T, opts ...RegistryOption) context.Context {
 	sum.NewBoundary[models.Document](k)
 	sum.NewBoundary[models.DocumentVersion](k)
 	sum.NewBoundary[models.User](k)
+	sum.NewBoundary[models.Subscription](k)
 
 	sum.Freeze(k)
 	t.Cleanup(sum.Reset)

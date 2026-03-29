@@ -1,7 +1,8 @@
 // Package main is the entry point for the notification sidecar.
 //
-// The notifier subscribes to a single notification stream via herald and indexes
-// notifications into OpenSearch for per-tenant notification feeds.
+// The notifier subscribes to a single notification stream via herald, expands
+// each notification into per-subscriber fan-out items via streamz, and runs
+// each item through the notify pipeline (assign → index → hint).
 package main
 
 import (
@@ -12,17 +13,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
+	astqlpg "github.com/zoobz-io/astql/postgres"
 	"github.com/zoobz-io/capitan"
 	"github.com/zoobz-io/herald"
 	heraldredis "github.com/zoobz-io/herald/redis"
+	"github.com/zoobz-io/streamz"
 	"github.com/zoobz-io/sum"
 
 	"github.com/zoobz-io/argus/config"
 	"github.com/zoobz-io/argus/events"
 	"github.com/zoobz-io/argus/internal/boot"
+	intcontracts "github.com/zoobz-io/argus/internal/contracts"
+	"github.com/zoobz-io/argus/internal/notify"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/stores"
+
+	_ "github.com/zoobz-io/grub/postgres"
 )
 
 func main() {
@@ -44,6 +50,9 @@ func run() error {
 	// 1. Load Configuration
 	// =========================================================================
 
+	if err := sum.Config[config.Database](ctx, k, nil); err != nil {
+		return fmt.Errorf("failed to load database config: %w", err)
+	}
 	if err := sum.Config[config.Redis](ctx, k, nil); err != nil {
 		return fmt.Errorf("failed to load redis config: %w", err)
 	}
@@ -58,6 +67,12 @@ func run() error {
 	// 2. Connect to Infrastructure
 	// =========================================================================
 
+	db, err := boot.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
 	redisClient, err := boot.Redis(ctx)
 	if err != nil {
 		return err
@@ -70,19 +85,25 @@ func run() error {
 	}
 
 	// =========================================================================
-	// 3. Create Notification Store
+	// 3. Create Stores and Register Internal Contracts
 	// =========================================================================
 
+	renderer := astqlpg.New()
+	subStore := stores.NewSubscriptions(db, renderer)
 	notifStore := stores.NewNotifications(searchProvider)
 
+	sum.Register[intcontracts.NotifySubscriptions](k, subStore)
+	sum.Register[intcontracts.NotifyIndexer](k, notifStore)
+
 	// =========================================================================
-	// 4. Freeze Registry
+	// 4. Create Pipeline and Freeze
 	// =========================================================================
 
+	pipeline := notify.New()
 	sum.Freeze(k)
 
 	// =========================================================================
-	// 5. Herald Subscriber (single notification stream)
+	// 5. Herald Subscriber (notification stream)
 	// =========================================================================
 
 	notifCfg := sum.MustUse[config.Notifier](ctx)
@@ -106,7 +127,58 @@ func run() error {
 	log.Println("herald subscriber started")
 
 	// =========================================================================
-	// 6. Notification Indexer
+	// 6. streamz: notification → []*FanOutItem expansion
+	// =========================================================================
+
+	inputCh := make(chan streamz.Result[models.Notification])
+
+	expander := streamz.NewAsyncMapper(func(ctx context.Context, notif models.Notification) ([]*notify.FanOutItem, error) {
+		subs, err := subStore.FindByTenantAndEventType(ctx, notif.TenantID, string(notif.Type))
+		if err != nil {
+			return nil, fmt.Errorf("finding subscriptions: %w", err)
+		}
+		items := make([]*notify.FanOutItem, len(subs))
+		for i, sub := range subs {
+			n := notif.Clone()
+			items[i] = &notify.FanOutItem{
+				Notification: &n,
+				Subscription: sub,
+				EventID:      notif.ID,
+			}
+		}
+		return items, nil
+	}).WithWorkers(4).WithName("notification-expander")
+
+	expandedCh := expander.Process(ctx, inputCh)
+
+	// =========================================================================
+	// 7. Pipeline runner: process each FanOutItem via streamz.Tap
+	// =========================================================================
+
+	runner := streamz.NewTap(func(result streamz.Result[[]*notify.FanOutItem]) {
+		if result.IsError() {
+			capitan.Error(ctx, events.NotifierFanOutError,
+				events.NotifierErrorKey.Field(result.Error().Unwrap()),
+			)
+			return
+		}
+		for _, item := range result.Value() {
+			if _, err := pipeline.Process(ctx, item); err != nil {
+				capitan.Error(ctx, events.NotifierFanOutError,
+					events.NotifierTypeKey.Field(string(item.Notification.Type)),
+					events.NotifierErrorKey.Field(err),
+				)
+				continue
+			}
+			capitan.Info(ctx, events.NotifierFanOutCompleted,
+				events.NotifierTypeKey.Field(string(item.Notification.Type)),
+			)
+		}
+	}).WithName("pipeline-runner")
+	_ = runner.Process(ctx, expandedCh)
+
+	// =========================================================================
+	// 8. Herald hook: feed notifications into streamz input channel
 	// =========================================================================
 
 	capitan.Hook(events.NotificationSignal, func(ctx context.Context, e *capitan.Event) {
@@ -114,26 +186,34 @@ func run() error {
 		if !ok {
 			return
 		}
-		notif.ID = uuid.NewString()
-		notif.CreatedAt = time.Now().UTC()
-		notif.Status = models.NotificationUnread
-
-		if err := notifStore.Index(ctx, &notif); err != nil {
-			capitan.Error(ctx, events.NotifierIndexError,
-				events.NotifierTypeKey.Field(string(notif.Type)),
-				events.NotifierErrorKey.Field(err),
-			)
-			return
+		select {
+		case inputCh <- streamz.NewSuccess(notif):
+		case <-ctx.Done():
 		}
-		capitan.Info(ctx, events.NotifierIndexed,
-			events.NotifierTypeKey.Field(string(notif.Type)),
-		)
 	})
 
-	log.Println("notification indexer registered")
+	log.Println("notification fan-out pipeline registered")
 
 	// =========================================================================
-	// 7. Block Until Shutdown
+	// 9. Herald Publisher: notify hints → argus:notify-hints stream
+	// =========================================================================
+
+	hintStream := heraldredis.New("argus:notify-hints", heraldredis.WithClient(redisClient))
+	hintPub := herald.NewPublisher(
+		hintStream,
+		events.NotifyHintSignal,
+		events.NotifyHintKey,
+		[]herald.Option[events.NotifyHint]{
+			herald.WithRetry[events.NotifyHint](3),
+			herald.WithBackoff[events.NotifyHint](3, 500*time.Millisecond),
+		},
+	)
+	hintPub.Start()
+	defer func() { _ = hintPub.Close() }()
+	log.Println("notify-hints publisher initialized")
+
+	// =========================================================================
+	// 10. Block Until Shutdown
 	// =========================================================================
 
 	log.Println("notifier ready")

@@ -39,6 +39,9 @@ var (
 	_ apicontracts.JobReader              = (*MockJobReader)(nil)
 	_ apicontracts.QueryEmbedder          = (*MockQueryEmbedder)(nil)
 	_ intcontracts.OCR                    = (*MockOCR)(nil)
+	_ admincontracts.Subscriptions        = (*MockAdminSubscriptions)(nil)
+	_ apicontracts.Subscriptions          = (*MockSubscriptions)(nil)
+	_ apicontracts.Notifications          = (*MockNotifications)(nil)
 )
 
 // MockTenants satisfies both api/contracts.Tenants and admin/contracts.Tenants.
@@ -408,5 +411,70 @@ func (m *MockVocabulary) Process(ctx context.Context, tenantID, name, descriptio
 }
 func (m *MockVocabulary) ProcessUpdate(ctx context.Context, id, name, description string) error {
 	if m.OnProcessUpdate != nil { return m.OnProcessUpdate(ctx, id, name, description) }
+	return nil
+}
+
+// MockSubscriptions satisfies api/contracts.Subscriptions.
+type MockSubscriptions struct {
+	OnGetSubscriptionByTenant func(ctx context.Context, tenantID, id string) (*models.Subscription, error)
+	OnListSubscriptionsByUser func(ctx context.Context, tenantID, userID string, page models.OffsetPage) (*models.OffsetResult[models.Subscription], error)
+	OnCreateSubscription      func(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error)
+	OnDeleteSubscription      func(ctx context.Context, tenantID, userID, id string) error
+}
+
+func (m *MockSubscriptions) GetSubscriptionByTenant(ctx context.Context, tenantID, id string) (*models.Subscription, error) {
+	if m.OnGetSubscriptionByTenant != nil { return m.OnGetSubscriptionByTenant(ctx, tenantID, id) }
+	return &models.Subscription{}, nil
+}
+func (m *MockSubscriptions) ListSubscriptionsByUser(ctx context.Context, tenantID, userID string, page models.OffsetPage) (*models.OffsetResult[models.Subscription], error) {
+	if m.OnListSubscriptionsByUser != nil { return m.OnListSubscriptionsByUser(ctx, tenantID, userID, page) }
+	return &models.OffsetResult[models.Subscription]{Items: []*models.Subscription{}}, nil
+}
+func (m *MockSubscriptions) CreateSubscription(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error) {
+	if m.OnCreateSubscription != nil { return m.OnCreateSubscription(ctx, tenantID, userID, eventType, channel) }
+	return &models.Subscription{}, nil
+}
+func (m *MockSubscriptions) DeleteSubscription(ctx context.Context, tenantID, userID, id string) error {
+	if m.OnDeleteSubscription != nil { return m.OnDeleteSubscription(ctx, tenantID, userID, id) }
+	return nil
+}
+
+// MockAdminSubscriptions satisfies admin/contracts.Subscriptions.
+type MockAdminSubscriptions struct {
+	OnGetSubscription    func(ctx context.Context, id string) (*models.Subscription, error)
+	OnListSubscriptions  func(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Subscription], error)
+	OnDeleteSubscription func(ctx context.Context, id string) error
+}
+
+func (m *MockAdminSubscriptions) GetSubscription(ctx context.Context, id string) (*models.Subscription, error) {
+	if m.OnGetSubscription != nil { return m.OnGetSubscription(ctx, id) }
+	return &models.Subscription{}, nil
+}
+func (m *MockAdminSubscriptions) ListSubscriptions(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Subscription], error) {
+	if m.OnListSubscriptions != nil { return m.OnListSubscriptions(ctx, page) }
+	return &models.OffsetResult[models.Subscription]{Items: []*models.Subscription{}}, nil
+}
+func (m *MockAdminSubscriptions) DeleteSubscription(ctx context.Context, id string) error {
+	if m.OnDeleteSubscription != nil { return m.OnDeleteSubscription(ctx, id) }
+	return nil
+}
+
+// MockNotifications satisfies api/contracts.Notifications.
+type MockNotifications struct {
+	OnSearchByUser    func(ctx context.Context, tenantID, userID string, page models.OffsetPage) (*models.OffsetResult[models.Notification], error)
+	OnUpdateStatus    func(ctx context.Context, tenantID, userID, id string, status models.NotificationStatus) (*models.Notification, error)
+	OnBulkUpdateStatus func(ctx context.Context, tenantID, userID string, status models.NotificationStatus) error
+}
+
+func (m *MockNotifications) SearchByUser(ctx context.Context, tenantID, userID string, page models.OffsetPage) (*models.OffsetResult[models.Notification], error) {
+	if m.OnSearchByUser != nil { return m.OnSearchByUser(ctx, tenantID, userID, page) }
+	return &models.OffsetResult[models.Notification]{Items: []*models.Notification{}}, nil
+}
+func (m *MockNotifications) UpdateStatus(ctx context.Context, tenantID, userID, id string, status models.NotificationStatus) (*models.Notification, error) {
+	if m.OnUpdateStatus != nil { return m.OnUpdateStatus(ctx, tenantID, userID, id, status) }
+	return &models.Notification{}, nil
+}
+func (m *MockNotifications) BulkUpdateStatus(ctx context.Context, tenantID, userID string, status models.NotificationStatus) error {
+	if m.OnBulkUpdateStatus != nil { return m.OnBulkUpdateStatus(ctx, tenantID, userID, status) }
 	return nil
 }
