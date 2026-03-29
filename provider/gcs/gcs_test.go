@@ -727,6 +727,127 @@ func TestList_InvalidCredentialsJSON(t *testing.T) {
 	}
 }
 
+func TestFetch_DownloadFailure(t *testing.T) {
+	// Server returns attributes OK but returns 416 on the actual download.
+	// 416 is not retried by the GCS client (unlike 5xx), so the test completes quickly.
+	server := fakeGCSServer(t, map[string]http.HandlerFunc{
+		"/storage/v1/b/test-bucket/o": func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("alt") == "media" {
+				http.Error(w, "range not satisfiable", http.StatusRequestedRangeNotSatisfiable)
+				return
+			}
+			jsonResponse(w, mustJSON(map[string]any{
+				"name":        "docs/report.pdf",
+				"contentType": "application/pdf",
+				"size":        "100",
+				"md5Hash":     "rL0Y20zC+Fzt72VPzMSk2A==",
+				"updated":     time.Now().UTC().Format(time.RFC3339Nano),
+				"timeCreated": time.Now().UTC().Format(time.RFC3339Nano),
+			}))
+		},
+		"/test-bucket/docs/report.pdf": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "range not satisfiable", http.StatusRequestedRangeNotSatisfiable)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Fetch(context.Background(), validCreds(), "docs/report.pdf")
+	if err == nil {
+		t.Fatal("expected error for download failure")
+	}
+}
+
+func TestFetch_AttributeReadFailure(t *testing.T) {
+	// Server returns an error when reading object attributes.
+	server := fakeGCSServer(t, map[string]http.HandlerFunc{
+		"/storage/v1/b/test-bucket/o": func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("alt") == "media" {
+				_, _ = w.Write([]byte("content"))
+				return
+			}
+			http.Error(w, "forbidden", http.StatusForbidden)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Fetch(context.Background(), validCreds(), "docs/report.pdf")
+	if err == nil {
+		t.Fatal("expected error for attribute read failure")
+	}
+	if !strings.Contains(err.Error(), "getting object attributes") {
+		t.Errorf("error should mention attributes, got %q", err.Error())
+	}
+}
+
+func TestSetup_InvalidCredentialsJSON(t *testing.T) {
+	// Provide base64-encoded but invalid JSON (not a valid service account key).
+	g := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{
+			"bucket":          "test-bucket",
+			"credentials_json": fakeServiceAccountJSON(),
+		},
+	}
+	// This uses a real GCS provider (no endpoint override) with fake credentials.
+	// The setup should fail when detecting credentials because the private key is fake
+	// and there is no test endpoint to bypass auth.
+	_, _, _, err := g.Fetch(context.Background(), creds, "docs/report.pdf")
+	if err == nil {
+		t.Fatal("expected error when using fake credentials without endpoint override")
+	}
+}
+
+func TestSetup_InvalidBase64CredentialsJSON(t *testing.T) {
+	g := New()
+	creds := &provider.Credentials{
+		Extra: map[string]string{
+			"bucket":          "test-bucket",
+			"credentials_json": "not-valid-base64!!!",
+		},
+	}
+	_, _, _, err := g.Fetch(context.Background(), creds, "docs/report.pdf")
+	if err == nil {
+		t.Fatal("expected error for invalid base64 credentials JSON")
+	}
+	if !strings.Contains(err.Error(), "decoding credentials_json") {
+		t.Errorf("error should mention decoding, got %q", err.Error())
+	}
+}
+
+func TestList_ServerError(t *testing.T) {
+	server := fakeGCSServer(t, map[string]http.HandlerFunc{
+		"/storage/v1/b/test-bucket/o": func(w http.ResponseWriter, _ *http.Request) {
+			// Use 403 instead of 500 because the GCS client retries 5xx.
+			http.Error(w, "forbidden", http.StatusForbidden)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, err := g.List(context.Background(), validCreds(), "docs/")
+	if err == nil {
+		t.Fatal("expected error for server error during listing")
+	}
+}
+
+func TestChanges_ServerError(t *testing.T) {
+	syncTime := time.Now().UTC().Add(-time.Hour)
+	server := fakeGCSServer(t, map[string]http.HandlerFunc{
+		"/storage/v1/b/test-bucket/o": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+		},
+	})
+	defer server.Close()
+
+	g := newTestProvider(t, server)
+	_, _, _, err := g.Changes(context.Background(), validCreds(), "docs/", syncTime.Format(time.RFC3339))
+	if err == nil {
+		t.Fatal("expected error for server error during changes")
+	}
+}
+
 // fakePrivateKey is an RSA private key used only in tests.
 // Generated specifically for test fixtures — not a real secret.
 //

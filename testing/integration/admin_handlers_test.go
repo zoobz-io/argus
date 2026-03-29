@@ -245,6 +245,30 @@ func TestAdmin_Documents_Delete(t *testing.T) {
 	rtesting.AssertStatus(t, getDoc, 404)
 }
 
+func TestAdmin_DocumentVersions_DeleteSpecificVersion(t *testing.T) {
+	s := Stores(t)
+	ctx := context.Background()
+
+	// Ingest to create a document and version.
+	doc, version := ingestTestDocument(t, s, ctx)
+
+	// Verify the version exists before deletion.
+	getBefore := rtesting.ServeRequest(testAdminEngine, "GET", "/document-versions/"+version.ID, nil)
+	rtesting.AssertStatus(t, getBefore, 200)
+
+	// Delete only the version.
+	del := rtesting.ServeRequest(testAdminEngine, "DELETE", "/document-versions/"+version.ID, nil)
+	rtesting.AssertStatus(t, del, 204)
+
+	// Version should be gone.
+	getAfter := rtesting.ServeRequest(testAdminEngine, "GET", "/document-versions/"+version.ID, nil)
+	rtesting.AssertStatus(t, getAfter, 404)
+
+	// Document should still exist after version deletion.
+	getDoc := rtesting.ServeRequest(testAdminEngine, "GET", "/documents/"+doc.ID, nil)
+	rtesting.AssertStatus(t, getDoc, 200)
+}
+
 // =============================================================================
 // Users
 // =============================================================================
