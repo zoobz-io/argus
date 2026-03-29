@@ -63,7 +63,7 @@ func TestListMySubscriptions_UserNotFound(t *testing.T) {
 func TestCreateSubscription_Success(t *testing.T) {
 	users := defaultUsersMock()
 	subs := &argustest.MockSubscriptions{
-		OnCreateSubscription: func(_ context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error) {
+		OnCreateSubscription: func(_ context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel, _ string) (*models.Subscription, error) {
 			return &models.Subscription{ID: "sub-new", UserID: userID, TenantID: tenantID, EventType: eventType, Channel: channel}, nil
 		},
 	}

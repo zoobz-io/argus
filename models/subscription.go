@@ -10,19 +10,21 @@ type SubscriptionChannel string
 
 // Subscription channel constants.
 const (
-	SubscriptionChannelInbox SubscriptionChannel = "inbox"
+	SubscriptionChannelInbox   SubscriptionChannel = "inbox"
+	SubscriptionChannelWebhook SubscriptionChannel = "webhook"
 )
 
 // Subscription represents a user's opt-in to receive notifications for a specific event type.
 type Subscription struct {
-	CreatedAt time.Time           `json:"created_at" db:"created_at" default:"now()"`
-	UpdatedAt time.Time           `json:"updated_at" db:"updated_at" default:"now()"`
-	Channel   SubscriptionChannel `json:"channel" db:"channel" constraints:"notnull" default:"'inbox'"`
-	ID        string              `json:"id" db:"id" constraints:"primarykey"`
-	UserID    string              `json:"user_id" db:"user_id" constraints:"notnull"`
-	TenantID  string              `json:"tenant_id" db:"tenant_id" constraints:"notnull"`
-	EventType string              `json:"event_type" db:"event_type" constraints:"notnull"`
-	Filters   json.RawMessage     `json:"filters,omitempty" db:"filters"`
+	CreatedAt         time.Time           `json:"created_at" db:"created_at" default:"now()"`
+	UpdatedAt         time.Time           `json:"updated_at" db:"updated_at" default:"now()"`
+	WebhookEndpointID *string             `json:"webhook_endpoint_id,omitempty" db:"webhook_endpoint_id"`
+	Channel           SubscriptionChannel `json:"channel" db:"channel" constraints:"notnull" default:"'inbox'"`
+	ID                string              `json:"id" db:"id" constraints:"primarykey"`
+	UserID            string              `json:"user_id" db:"user_id" constraints:"notnull"`
+	TenantID          string              `json:"tenant_id" db:"tenant_id" constraints:"notnull"`
+	EventType         string              `json:"event_type" db:"event_type" constraints:"notnull"`
+	Filters           json.RawMessage     `json:"filters,omitempty" db:"filters"`
 }
 
 // GetID returns the subscription's primary key.
@@ -42,6 +44,10 @@ func (s Subscription) Clone() Subscription {
 		f := make(json.RawMessage, len(s.Filters))
 		copy(f, s.Filters)
 		c.Filters = f
+	}
+	if s.WebhookEndpointID != nil {
+		w := *s.WebhookEndpointID
+		c.WebhookEndpointID = &w
 	}
 	return c
 }

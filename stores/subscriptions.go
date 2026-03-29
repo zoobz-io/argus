@@ -26,13 +26,16 @@ func NewSubscriptions(db *sqlx.DB, renderer astql.Renderer) *Subscriptions {
 }
 
 // CreateSubscription creates a new subscription.
-func (s *Subscriptions) CreateSubscription(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel) (*models.Subscription, error) {
+func (s *Subscriptions) CreateSubscription(ctx context.Context, tenantID, userID, eventType string, channel models.SubscriptionChannel, webhookEndpointID string) (*models.Subscription, error) {
 	sub := &models.Subscription{
 		ID:        uuid.New().String(),
 		UserID:    userID,
 		TenantID:  tenantID,
 		EventType: eventType,
 		Channel:   channel,
+	}
+	if webhookEndpointID != "" {
+		sub.WebhookEndpointID = &webhookEndpointID
 	}
 	if err := s.Set(ctx, "", sub); err != nil {
 		return nil, fmt.Errorf("creating subscription: %w", err)

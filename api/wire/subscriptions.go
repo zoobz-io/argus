@@ -10,8 +10,9 @@ import (
 
 // SubscriptionRequest is the request body for creating a subscription.
 type SubscriptionRequest struct {
-	EventType string                   `json:"event_type" description:"Event type to subscribe to" example:"ingest.completed"`
-	Channel   models.SubscriptionChannel `json:"channel" description:"Delivery channel" example:"inbox"`
+	EventType         string                     `json:"event_type" description:"Event type to subscribe to" example:"ingest.completed"`
+	Channel           models.SubscriptionChannel `json:"channel" description:"Delivery channel" example:"inbox"`
+	WebhookEndpointID string                     `json:"webhook_endpoint_id,omitempty" description:"Optional webhook endpoint ID for webhook channel"`
 }
 
 // Validate validates the request fields.

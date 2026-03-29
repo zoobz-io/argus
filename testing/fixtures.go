@@ -97,3 +97,20 @@ func NewNotification() *models.Notification {
 		CreatedAt: FixtureTime,
 	}
 }
+
+func NewHook() *models.Hook {
+	return &models.Hook{
+		ID: "h1", TenantID: "t1", UserID: "u1",
+		URL: "https://example.com/webhook", Secret: "whsec_test123",
+		Active: true,
+		CreatedAt: FixtureTime, UpdatedAt: FixtureTime2,
+	}
+}
+
+func NewDelivery() *models.Delivery {
+	return &models.Delivery{
+		ID: "dl1", HookID: "h1", EventID: "evt1", TenantID: "t1",
+		StatusCode: 200, Attempt: 1,
+		CreatedAt: FixtureTime,
+	}
+}

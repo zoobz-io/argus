@@ -86,6 +86,12 @@ func WithAPINotifications(m *MockNotifications) RegistryOption {
 func WithAPIAuditLog(m *MockAuditLog) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.AuditLog](k, m) }
 }
+func WithAPIHooks(m *MockHooks) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Hooks](k, m) }
+}
+func WithAPIDeliveries(m *MockDeliveries) RegistryOption {
+	return func(k sum.Key) { sum.Register[apicontracts.Deliveries](k, m) }
+}
 
 // Admin contract options.
 
@@ -122,6 +128,9 @@ func WithAdminSubscriptions(m *MockAdminSubscriptions) RegistryOption {
 func WithAdminAuditLog(m *MockAdminAuditLog) RegistryOption {
 	return func(k sum.Key) { sum.Register[admincontracts.AuditLog](k, m) }
 }
+func WithAdminHooks(m *MockAdminHooks) RegistryOption {
+	return func(k sum.Key) { sum.Register[admincontracts.Hooks](k, m) }
+}
 
 // Internal contract options.
 
@@ -134,6 +143,12 @@ func WithConverter(m *MockConverter) RegistryOption {
 func WithClassifier(m *MockClassifier) RegistryOption {
 	return func(k sum.Key) { sum.Register[intcontracts.Classifier](k, m) }
 }
+func WithHookLoader(m *MockHookLoader) RegistryOption {
+	return func(k sum.Key) { sum.Register[intcontracts.NotifyHookLoader](k, m) }
+}
+func WithDeliveryLogger(m *MockDeliveryLogger) RegistryOption {
+	return func(k sum.Key) { sum.Register[intcontracts.NotifyDeliveryLogger](k, m) }
+}
 
 // WithBoundaries registers additional boundaries (e.g., wire.RegisterBoundaries).
 func WithBoundaries(fn func(k sum.Key)) RegistryOption {
@@ -145,7 +160,7 @@ func WithBoundaries(fn func(k sum.Key)) RegistryOption {
 func SetupRegistry(t *testing.T, opts ...RegistryOption) context.Context {
 	t.Helper()
 	sum.Reset()
-	sum.New()
+	_ = sum.New()
 	k := sum.Start()
 
 	// Load configs with defaults for gRPC timeout support.
@@ -166,6 +181,7 @@ func SetupRegistry(t *testing.T, opts ...RegistryOption) context.Context {
 	sum.NewBoundary[models.DocumentVersion](k)
 	sum.NewBoundary[models.User](k)
 	sum.NewBoundary[models.Subscription](k)
+	sum.NewBoundary[models.Hook](k)
 
 	sum.Freeze(k)
 	t.Cleanup(sum.Reset)
