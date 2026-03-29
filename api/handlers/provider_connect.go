@@ -25,7 +25,7 @@ var providerAuthURL = rocco.GET[rocco.NoBody, wire.AuthURLResponse]("/providers/
 	}
 
 	// Validate redirect URI against allowed list.
-	allowedURIs := sum.MustUse[AllowedRedirectURIs](r)
+	allowedURIs := sum.MustUse[*AllowedRedirectURIs](r)
 	if !allowedURIs.IsAllowed(redirectURI) {
 		return wire.AuthURLResponse{}, ErrInvalidRedirectURI
 	}
