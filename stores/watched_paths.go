@@ -81,6 +81,29 @@ func (s *WatchedPaths) ListWatchedPaths(ctx context.Context, page models.OffsetP
 	return &models.OffsetResult[models.WatchedPath]{Items: items, Total: int64(total), Offset: page.Offset}, nil
 }
 
+// ListActiveWatchedPaths retrieves all watched paths where active=true without pagination.
+func (s *WatchedPaths) ListActiveWatchedPaths(ctx context.Context) ([]*models.WatchedPath, error) {
+	return s.Query().
+		Where("active", "=", "active").
+		OrderBy("created_at", "ASC").
+		OrderBy("id", "ASC").
+		Exec(ctx, map[string]any{"active": true})
+}
+
+// UpdateSyncState updates the sync_state column for a watched path.
+// Uses s.Set() to trigger cereal boundary encryption on the sync_state field.
+func (s *WatchedPaths) UpdateSyncState(ctx context.Context, id string, syncState *string) error {
+	wp, err := s.GetWatchedPath(ctx, id)
+	if err != nil {
+		return fmt.Errorf("updating sync state: %w", err)
+	}
+	wp.SyncState = syncState
+	if err := s.Set(ctx, id, wp); err != nil {
+		return fmt.Errorf("updating sync state: %w", err)
+	}
+	return nil
+}
+
 // ListWatchedPathsByTenant retrieves watched paths for a specific tenant using offset/limit pagination.
 func (s *WatchedPaths) ListWatchedPathsByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.WatchedPath], error) {
 	params := map[string]any{"tenant_id": tenantID}

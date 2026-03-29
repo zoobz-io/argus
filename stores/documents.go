@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/zoobz-io/astql"
@@ -31,6 +32,31 @@ func (s *Documents) GetDocument(ctx context.Context, id string) (*models.Documen
 // DeleteDocument removes a document.
 func (s *Documents) DeleteDocument(ctx context.Context, id string) error {
 	return s.Delete(ctx, id)
+}
+
+// GetDocumentByExternalID retrieves a document by its external ID and tenant ID.
+func (s *Documents) GetDocumentByExternalID(ctx context.Context, tenantID, externalID string) (*models.Document, error) {
+	params := map[string]any{"tenant_id": tenantID, "external_id": externalID}
+	results, err := s.Query().
+		Where("tenant_id", "=", "tenant_id").
+		Where("external_id", "=", "external_id").
+		Limit(1).
+		Exec(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("getting document by external ID: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, nil
+	}
+	return results[0], nil
+}
+
+// CreateDocument inserts a new document. The caller must set all fields including the ID.
+func (s *Documents) CreateDocument(ctx context.Context, doc *models.Document) (*models.Document, error) {
+	if err := s.Set(ctx, "", doc); err != nil {
+		return nil, fmt.Errorf("creating document: %w", err)
+	}
+	return doc, nil
 }
 
 // ListDocuments retrieves a paginated list of all documents.

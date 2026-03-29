@@ -135,6 +135,52 @@ func TestDocumentVersions_ListVersionsByDocument(t *testing.T) {
 	mock.AssertExpectations()
 }
 
+func TestDocumentVersions_CreateDocumentVersion(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocumentVersions(t, mock, nil)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.DocumentVersion{
+		{ID: "ver-new", DocumentID: "doc-1", TenantID: "t-1", ContentHash: "abc123", VersionNumber: 1, CreatedAt: ts},
+	})
+
+	ver := &models.DocumentVersion{
+		ID:            "ver-new",
+		DocumentID:    "doc-1",
+		TenantID:      "t-1",
+		ContentHash:   "abc123",
+		VersionNumber: 1,
+	}
+	result, err := store.CreateDocumentVersion(context.Background(), ver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "ver-new" {
+		t.Errorf("ID: got %q, want %q", result.ID, "ver-new")
+	}
+	mock.AssertExpectations()
+}
+
+func TestDocumentVersions_CreateDocumentVersion_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocumentVersions(t, mock, nil)
+
+	mock.ExpectExec().WithError(errors.New("constraint violation"))
+
+	ver := &models.DocumentVersion{
+		ID:            "ver-new",
+		DocumentID:    "doc-1",
+		TenantID:      "t-1",
+		ContentHash:   "abc123",
+		VersionNumber: 1,
+	}
+	_, err := store.CreateDocumentVersion(context.Background(), ver)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
 func TestDocumentVersions_GetVersionContent(t *testing.T) {
 	bucket := &mockBucketProvider{
 		OnGet: func(_ context.Context, key string) ([]byte, *grub.ObjectInfo, error) {
@@ -225,6 +271,57 @@ func TestDocumentVersions_ListVersionsByDocument_Error(t *testing.T) {
 	mock.ExpectQuery().WithError(errors.New("db error"))
 
 	_, err := store.ListVersionsByDocument(context.Background(), "doc-1", models.OffsetPage{Offset: 0, Limit: 10})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestDocumentVersions_GetLatestVersion(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocumentVersions(t, mock, nil)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.DocumentVersion{
+		{ID: "ver-3", DocumentID: "doc-1", TenantID: "t-1", VersionNumber: 3, ContentHash: "hash-3", CreatedAt: ts},
+	})
+
+	ver, err := store.GetLatestVersion(context.Background(), "doc-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ver == nil {
+		t.Fatal("expected version")
+	}
+	if ver.ID != "ver-3" {
+		t.Errorf("ID: got %q, want %q", ver.ID, "ver-3")
+	}
+	mock.AssertExpectations()
+}
+
+func TestDocumentVersions_GetLatestVersion_None(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocumentVersions(t, mock, nil)
+
+	mock.ExpectQuery().WithRows([]models.DocumentVersion{})
+
+	ver, err := store.GetLatestVersion(context.Background(), "doc-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ver != nil {
+		t.Error("expected nil for no versions")
+	}
+	mock.AssertExpectations()
+}
+
+func TestDocumentVersions_GetLatestVersion_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestDocumentVersions(t, mock, nil)
+
+	mock.ExpectQuery().WithError(errors.New("db error"))
+
+	_, err := store.GetLatestVersion(context.Background(), "doc-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

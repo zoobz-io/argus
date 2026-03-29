@@ -145,6 +145,94 @@ func TestWatchedPaths_ListWatchedPaths(t *testing.T) {
 	mock.AssertExpectations()
 }
 
+func TestWatchedPaths_ListActiveWatchedPaths(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestWatchedPaths(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.WatchedPath{
+		{ID: "wp-1", TenantID: "t-1", ProviderID: "p-1", Path: "/docs", Active: true, CreatedAt: ts, UpdatedAt: ts},
+		{ID: "wp-2", TenantID: "t-2", ProviderID: "p-2", Path: "/images", Active: true, CreatedAt: ts.Add(time.Hour), UpdatedAt: ts.Add(time.Hour)},
+	})
+
+	paths, err := store.ListActiveWatchedPaths(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 2 {
+		t.Errorf("Items: got %d, want 2", len(paths))
+	}
+	mock.AssertExpectations()
+}
+
+func TestWatchedPaths_ListActiveWatchedPaths_Error(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestWatchedPaths(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("db error"))
+
+	_, err := store.ListActiveWatchedPaths(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestWatchedPaths_UpdateSyncState(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestWatchedPaths(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	syncState := "token-1"
+
+	// GetWatchedPath (SELECT)
+	mock.ExpectQuery().WithRows([]models.WatchedPath{
+		{ID: "wp-1", TenantID: "t-1", ProviderID: "p-1", Path: "/docs", Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	// Set (INSERT...RETURNING)
+	mock.ExpectQuery().WithRows([]models.WatchedPath{
+		{ID: "wp-1", TenantID: "t-1", ProviderID: "p-1", Path: "/docs", Active: true, SyncState: &syncState, CreatedAt: ts, UpdatedAt: ts},
+	})
+
+	err := store.UpdateSyncState(context.Background(), "wp-1", &syncState)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mock.AssertExpectations()
+}
+
+func TestWatchedPaths_UpdateSyncState_GetError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestWatchedPaths(t, mock)
+
+	mock.ExpectQuery().WithError(errors.New("not found"))
+
+	syncState := "token-1"
+	err := store.UpdateSyncState(context.Background(), "wp-1", &syncState)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
+func TestWatchedPaths_UpdateSyncState_SetError(t *testing.T) {
+	mock := soytesting.NewMockDB(t)
+	store := newTestWatchedPaths(t, mock)
+
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery().WithRows([]models.WatchedPath{
+		{ID: "wp-1", TenantID: "t-1", ProviderID: "p-1", Path: "/docs", Active: true, CreatedAt: ts, UpdatedAt: ts},
+	})
+	mock.ExpectExec().WithError(errors.New("constraint violation"))
+
+	syncState := "token-1"
+	err := store.UpdateSyncState(context.Background(), "wp-1", &syncState)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	mock.AssertExpectations()
+}
+
 func TestWatchedPaths_ListWatchedPathsByTenant(t *testing.T) {
 	mock := soytesting.NewMockDB(t)
 	store := newTestWatchedPaths(t, mock)

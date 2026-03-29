@@ -37,6 +37,23 @@ func (s *DocumentVersions) DeleteDocumentVersion(ctx context.Context, id string)
 	return s.Delete(ctx, id)
 }
 
+// GetLatestVersion returns the most recent version for a document, or nil if none exist.
+func (s *DocumentVersions) GetLatestVersion(ctx context.Context, documentID string) (*models.DocumentVersion, error) {
+	params := map[string]any{"document_id": documentID}
+	results, err := s.Query().
+		Where("document_id", "=", "document_id").
+		OrderBy("version_number", "DESC").
+		Limit(1).
+		Exec(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("getting latest version: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, nil
+	}
+	return results[0], nil
+}
+
 // ListDocumentVersions retrieves a paginated list of all document versions.
 func (s *DocumentVersions) ListDocumentVersions(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.DocumentVersion], error) {
 	items, err := s.Query().
@@ -53,6 +70,14 @@ func (s *DocumentVersions) ListDocumentVersions(ctx context.Context, page models
 		return nil, countErr
 	}
 	return &models.OffsetResult[models.DocumentVersion]{Items: items, Total: int64(total), Offset: page.Offset}, nil
+}
+
+// CreateDocumentVersion inserts a new document version. The caller must set all fields including the ID.
+func (s *DocumentVersions) CreateDocumentVersion(ctx context.Context, ver *models.DocumentVersion) (*models.DocumentVersion, error) {
+	if err := s.Set(ctx, "", ver); err != nil {
+		return nil, fmt.Errorf("creating document version: %w", err)
+	}
+	return ver, nil
 }
 
 // GetVersionContent retrieves the raw bytes for a document version from object storage.
