@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/zoobz-io/capitan"
+
+	"github.com/zoobz-io/argus/events"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/provider"
 )
@@ -197,6 +200,16 @@ func (s *Syncer) processChange(ctx context.Context, wp *models.WatchedPath, prov
 		return fmt.Errorf("creating document version: %w", err)
 	}
 	log.Printf("syncer: created version %s for document %s", ver.ID, doc.ID)
+
+	// Emit fetch signal so the fetcher downloads the content from the provider.
+	capitan.Emit(ctx, events.FetchSignal, events.FetchKey.Field(events.FetchMessage{
+		VersionID:  ver.ID,
+		DocumentID: doc.ID,
+		ProviderID: prov.ID,
+		TenantID:   wp.TenantID,
+		Ref:        change.Ref,
+		ObjectKey:  doc.ObjectKey,
+	}))
 
 	return nil
 }
