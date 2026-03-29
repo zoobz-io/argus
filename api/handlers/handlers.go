@@ -10,6 +10,9 @@ func All() []rocco.Endpoint {
 		getProvider,
 		createProvider,
 		updateProvider,
+		// Provider Connect
+		providerAuthURL,
+		providerConnect,
 		// Watched Paths
 		listWatchedPaths,
 		getWatchedPath,

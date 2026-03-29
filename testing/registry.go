@@ -11,7 +11,9 @@ import (
 	apicontracts "github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/argus/config"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
+	"github.com/zoobz-io/argus/internal/oauth"
 	"github.com/zoobz-io/argus/models"
+	"github.com/zoobz-io/argus/provider"
 	"github.com/zoobz-io/rocco"
 	rtesting "github.com/zoobz-io/rocco/testing"
 	"github.com/zoobz-io/sum"
@@ -60,6 +62,17 @@ func WithAPIQueryEmbedder(m *MockQueryEmbedder) RegistryOption {
 }
 func WithAPIVocabulary(m *MockVocabulary) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.Vocabulary](k, m) }
+}
+// WithRegistration registers an arbitrary value by calling the provided function.
+// Used for types that can't be imported without creating cycles.
+func WithRegistration(fn func(sum.Key)) RegistryOption {
+	return func(k sum.Key) { fn(k) }
+}
+func WithProviderRegistry(reg *provider.Registry) RegistryOption {
+	return func(k sum.Key) { sum.Register[*provider.Registry](k, reg) }
+}
+func WithStateSigner(signer *oauth.StateSigner) RegistryOption {
+	return func(k sum.Key) { sum.Register[*oauth.StateSigner](k, signer) }
 }
 func WithAPIUsers(m *MockUsers) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.Users](k, m) }

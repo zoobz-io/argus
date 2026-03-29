@@ -73,17 +73,27 @@ func (m *MockTenants) ListTenants(ctx context.Context, page models.OffsetPage) (
 
 // MockProviders satisfies both api/contracts.Providers and admin/contracts.Providers.
 type MockProviders struct {
-	OnGetProvider           func(ctx context.Context, id string) (*models.Provider, error)
-	OnCreateProvider        func(ctx context.Context, tenantID string, pt models.ProviderType, name, creds string) (*models.Provider, error)
-	OnUpdateProvider        func(ctx context.Context, id string, pt models.ProviderType, name, creds string) (*models.Provider, error)
-	OnDeleteProvider        func(ctx context.Context, id string) error
-	OnListProviders         func(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Provider], error)
-	OnListProvidersByTenant func(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Provider], error)
+	OnGetProvider              func(ctx context.Context, id string) (*models.Provider, error)
+	OnGetProviderByTenant      func(ctx context.Context, id, tenantID string) (*models.Provider, error)
+	OnCreateProvider           func(ctx context.Context, tenantID string, pt models.ProviderType, name, creds string) (*models.Provider, error)
+	OnUpdateProvider           func(ctx context.Context, id string, pt models.ProviderType, name, creds string) (*models.Provider, error)
+	OnUpdateProviderCredentials func(ctx context.Context, id, credentials string) error
+	OnDeleteProvider           func(ctx context.Context, id string) error
+	OnListProviders            func(ctx context.Context, page models.OffsetPage) (*models.OffsetResult[models.Provider], error)
+	OnListProvidersByTenant    func(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.Provider], error)
 }
 
 func (m *MockProviders) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
 	if m.OnGetProvider != nil { return m.OnGetProvider(ctx, id) }
 	return &models.Provider{}, nil
+}
+func (m *MockProviders) GetProviderByTenant(ctx context.Context, id, tenantID string) (*models.Provider, error) {
+	if m.OnGetProviderByTenant != nil { return m.OnGetProviderByTenant(ctx, id, tenantID) }
+	return &models.Provider{ID: id, TenantID: tenantID}, nil
+}
+func (m *MockProviders) UpdateProviderCredentials(ctx context.Context, id, credentials string) error {
+	if m.OnUpdateProviderCredentials != nil { return m.OnUpdateProviderCredentials(ctx, id, credentials) }
+	return nil
 }
 func (m *MockProviders) CreateProvider(ctx context.Context, tenantID string, pt models.ProviderType, name, creds string) (*models.Provider, error) {
 	if m.OnCreateProvider != nil { return m.OnCreateProvider(ctx, tenantID, pt, name, creds) }
