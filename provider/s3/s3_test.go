@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"io"
 	"net/http"
+	"sort"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -22,6 +23,13 @@ var _ provider.Provider = (*S3)(nil)
 // Every request is validated for the presence of an Authorization header.
 func fakeServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
+	prefixes := make([]string, 0, len(handlers))
+	for p := range handlers {
+		prefixes = append(prefixes, p)
+	}
+	sort.Slice(prefixes, func(i, j int) bool {
+		return len(prefixes[i]) > len(prefixes[j])
+	})
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Validate that requests carry AWS Signature V4 Authorization header.
 		auth := r.Header.Get("Authorization")
@@ -31,9 +39,9 @@ func fakeServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Se
 			return
 		}
 
-		for prefix, handler := range handlers {
+		for _, prefix := range prefixes {
 			if strings.HasPrefix(r.URL.Path, prefix) {
-				handler(w, r)
+				handlers[prefix](w, r)
 				return
 			}
 		}

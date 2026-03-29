@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -23,10 +24,17 @@ var _ provider.Provider = (*GCS)(nil)
 // fakeGCSServer returns an httptest.Server that routes by path and method.
 func fakeGCSServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
+	prefixes := make([]string, 0, len(handlers))
+	for p := range handlers {
+		prefixes = append(prefixes, p)
+	}
+	sort.Slice(prefixes, func(i, j int) bool {
+		return len(prefixes[i]) > len(prefixes[j])
+	})
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for prefix, handler := range handlers {
+		for _, prefix := range prefixes {
 			if strings.HasPrefix(r.URL.Path, prefix) {
-				handler(w, r)
+				handlers[prefix](w, r)
 				return
 			}
 		}
