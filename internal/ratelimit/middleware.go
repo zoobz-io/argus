@@ -17,15 +17,19 @@ import (
 
 // Limiter implements a Redis sliding window rate limiter.
 type Limiter struct {
-	redis *goredis.Client
-	rpm   int
+	redis      *goredis.Client
+	rpm        int
+	trustProxy bool // If false, ignore X-Forwarded-For (prevents spoofing)
 }
 
 // New creates a rate limiter backed by Redis.
-func New(redis *goredis.Client, rpm int) *Limiter {
+// trustProxy controls whether X-Forwarded-For is used for client IP extraction.
+// Set to true only when behind a trusted reverse proxy.
+func New(redis *goredis.Client, rpm int, trustProxy bool) *Limiter {
 	return &Limiter{
-		redis: redis,
-		rpm:   rpm,
+		redis:      redis,
+		rpm:        rpm,
+		trustProxy: trustProxy,
 	}
 }
 
@@ -38,20 +42,17 @@ func (l *Limiter) Middleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			clientIP := extractClientIP(r)
+			clientIP := l.extractClientIP(r)
 			bucket := time.Now().UTC().Format("2006-01-02T15:04")
 			key := fmt.Sprintf("ratelimit:%s:%s", clientIP, bucket)
 
-			count, err := l.redis.Incr(ctx, key).Result()
+			// Atomic INCR + EXPIRE via Lua to prevent the race where a crash
+			// between INCR and EXPIRE leaves a key with no TTL.
+			count, err := incrWithExpire.Run(ctx, l.redis, []string{key}, 60).Int64()
 			if err != nil {
 				// Redis failure — let the request through rather than block traffic.
 				next.ServeHTTP(w, r)
 				return
-			}
-
-			// Set expiry on first increment so the key auto-cleans.
-			if count == 1 {
-				l.redis.Expire(ctx, key, 60*time.Second)
 			}
 
 			remaining := l.rpm - int(count)
@@ -73,17 +74,28 @@ func (l *Limiter) Middleware() func(http.Handler) http.Handler {
 	}
 }
 
-// extractClientIP returns the client IP from X-Forwarded-For (first entry)
-// or falls back to RemoteAddr.
-func extractClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For can be comma-separated; take the first (client) IP.
-		if idx := strings.IndexByte(xff, ','); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
+// incrWithExpire atomically increments a key and sets its TTL.
+// Prevents the race where a crash between INCR and EXPIRE leaves
+// a key with no expiry, accumulating forever.
+var incrWithExpire = goredis.NewScript(`
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+    redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+return count
+`)
+
+// extractClientIP returns the client IP. If trustProxy is true, uses
+// X-Forwarded-For (first entry). Otherwise uses RemoteAddr only.
+func (l *Limiter) extractClientIP(r *http.Request) string {
+	if l.trustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if idx := strings.IndexByte(xff, ','); idx != -1 {
+				return strings.TrimSpace(xff[:idx])
+			}
+			return strings.TrimSpace(xff)
 		}
-		return strings.TrimSpace(xff)
 	}
-	// RemoteAddr is host:port — strip the port.
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

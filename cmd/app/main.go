@@ -288,7 +288,7 @@ func run() error {
 
 	// Rate limiting middleware — runs before auth, keyed by client IP.
 	rlCfg := sum.MustUse[config.RateLimit](ctx)
-	rateLimiter := ratelimit.New(redisClient, rlCfg.RequestsPerMinute)
+	rateLimiter := ratelimit.New(redisClient, rlCfg.RequestsPerMinute, rlCfg.TrustProxy)
 	svc.Engine().WithMiddleware(rateLimiter.Middleware())
 
 	svc.Handle(handlers.All()...)

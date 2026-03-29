@@ -7,6 +7,7 @@ toolchain go1.25.3
 require (
 	cloud.google.com/go/auth v0.18.2
 	cloud.google.com/go/storage v1.61.3
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/google/uuid v1.6.0
@@ -32,7 +33,9 @@ require (
 	github.com/zoobz-io/lucene v0.0.4
 	github.com/zoobz-io/pipz v1.0.5
 	github.com/zoobz-io/rocco v0.1.16
+	github.com/zoobz-io/soy v1.0.8
 	github.com/zoobz-io/soy/testing v0.0.0-20260326212003-c968b42d4748
+	github.com/zoobz-io/streamz v1.0.7
 	github.com/zoobz-io/sum v0.0.12
 	github.com/zoobz-io/vex v0.0.2
 	github.com/zoobz-io/zyn v1.0.2
@@ -93,6 +96,7 @@ require (
 	github.com/tinylib/msgp v1.6.1 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zoobz-io/atom v1.0.1 // indirect
 	github.com/zoobz-io/clockz v1.0.2 // indirect
 	github.com/zoobz-io/dbml v1.0.1 // indirect
@@ -102,8 +106,6 @@ require (
 	github.com/zoobz-io/scio v0.0.5 // indirect
 	github.com/zoobz-io/sentinel v1.0.4 // indirect
 	github.com/zoobz-io/slush v0.0.3 // indirect
-	github.com/zoobz-io/soy v1.0.8 // indirect
-	github.com/zoobz-io/streamz v1.0.7 // indirect
 	github.com/zoobz-io/vecna v0.0.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.39.0 // indirect

@@ -17,7 +17,7 @@ func setupTestLimiter(t *testing.T, rpm int) (*Limiter, *miniredis.Miniredis) {
 	mr := miniredis.RunT(t)
 	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	return New(client, rpm), mr
+	return New(client, rpm, true), mr
 }
 
 func TestMiddleware_UnderLimit_RequestPasses(t *testing.T) {

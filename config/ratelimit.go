@@ -4,7 +4,8 @@ import "errors"
 
 // RateLimit holds API rate limiting configuration.
 type RateLimit struct {
-	RequestsPerMinute int `env:"APP_RATE_LIMIT_RPM" default:"120"`
+	RequestsPerMinute int  `env:"APP_RATE_LIMIT_RPM" default:"120"`
+	TrustProxy        bool `env:"APP_RATE_LIMIT_TRUST_PROXY" default:"false"`
 }
 
 // Validate checks that the configuration is valid.
