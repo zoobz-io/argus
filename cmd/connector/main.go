@@ -230,6 +230,10 @@ func (a *syncStoreAdapter) CreateDocumentVersion(ctx context.Context, ver *model
 	return a.vers.CreateDocumentVersion(ctx, ver)
 }
 
+func (a *syncStoreAdapter) GetLatestVersion(ctx context.Context, documentID string) (*models.DocumentVersion, error) {
+	return a.vers.GetLatestVersion(ctx, documentID)
+}
+
 func (a *syncStoreAdapter) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
 	return a.prov.GetProvider(ctx, id)
 }

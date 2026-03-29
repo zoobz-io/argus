@@ -18,6 +18,7 @@ type mockSyncStore struct {
 	onGetDocumentByExternalID func(ctx context.Context, tenantID, externalID string) (*models.Document, error)
 	onCreateDocument         func(ctx context.Context, doc *models.Document) (*models.Document, error)
 	onCreateDocumentVersion  func(ctx context.Context, ver *models.DocumentVersion) (*models.DocumentVersion, error)
+	onGetLatestVersion       func(ctx context.Context, documentID string) (*models.DocumentVersion, error)
 	onGetProvider            func(ctx context.Context, id string) (*models.Provider, error)
 }
 
@@ -54,6 +55,13 @@ func (m *mockSyncStore) CreateDocumentVersion(ctx context.Context, ver *models.D
 		return m.onCreateDocumentVersion(ctx, ver)
 	}
 	return ver, nil
+}
+
+func (m *mockSyncStore) GetLatestVersion(ctx context.Context, documentID string) (*models.DocumentVersion, error) {
+	if m.onGetLatestVersion != nil {
+		return m.onGetLatestVersion(ctx, documentID)
+	}
+	return nil, nil
 }
 
 func (m *mockSyncStore) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
@@ -407,5 +415,64 @@ func TestSyncer_Run_ShutdownOnCancel(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("syncer did not shut down in time")
+	}
+}
+
+func TestSyncer_PollPath_DedupByContentHash(t *testing.T) {
+	var versionCreated bool
+
+	syncToken := "token-1"
+	store := &mockSyncStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Type: "test_provider"}, nil
+		},
+		onGetDocumentByExternalID: func(_ context.Context, _, _ string) (*models.Document, error) {
+			return &models.Document{ID: "doc-1", ExternalID: "ref-1"}, nil
+		},
+		onGetLatestVersion: func(_ context.Context, _ string) (*models.DocumentVersion, error) {
+			return &models.DocumentVersion{ID: "ver-1", ContentHash: "same-hash"}, nil
+		},
+		onCreateDocumentVersion: func(_ context.Context, _ *models.DocumentVersion) (*models.DocumentVersion, error) {
+			versionCreated = true
+			return nil, nil
+		},
+	}
+
+	prov := &mockProvider{
+		providerType: "test_provider",
+		onChanges: func(_ context.Context, _ *provider.Credentials, _, _ string) ([]provider.Change, string, *provider.Credentials, error) {
+			return []provider.Change{
+				{
+					Ref:  "ref-1",
+					Type: provider.ChangeModified,
+					Entry: &provider.Entry{
+						Ref:         "ref-1",
+						Name:        "report.pdf",
+						MimeType:    "application/pdf",
+						ContentHash: "same-hash",
+					},
+				},
+			}, "token-2", nil, nil
+		},
+	}
+
+	reg := provider.NewRegistry()
+	reg.Register(prov)
+
+	credStore := &mockProviderStore{
+		onGetProvider: func(_ context.Context, id string) (*models.Provider, error) {
+			return &models.Provider{ID: id, Credentials: `{"access_token":"token"}`}, nil
+		},
+	}
+	cm := NewCredentialManager(credStore)
+
+	wp := &models.WatchedPath{ID: "wp-1", ProviderID: "prov-1", TenantID: "tenant-1", Path: "/docs", SyncState: &syncToken}
+	syncer := NewSyncer(store, cm, reg, time.Minute)
+
+	if err := syncer.pollPath(context.Background(), wp); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if versionCreated {
+		t.Error("should not create version when content hash matches latest")
 	}
 }

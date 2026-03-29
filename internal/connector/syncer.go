@@ -18,6 +18,7 @@ type SyncStore interface {
 	GetDocumentByExternalID(ctx context.Context, tenantID, externalID string) (*models.Document, error)
 	CreateDocument(ctx context.Context, doc *models.Document) (*models.Document, error)
 	CreateDocumentVersion(ctx context.Context, ver *models.DocumentVersion) (*models.DocumentVersion, error)
+	GetLatestVersion(ctx context.Context, documentID string) (*models.DocumentVersion, error)
 	GetProvider(ctx context.Context, id string) (*models.Provider, error)
 }
 
@@ -174,6 +175,14 @@ func (s *Syncer) processChange(ctx context.Context, wp *models.WatchedPath, prov
 			return fmt.Errorf("creating document: %w", err)
 		}
 		log.Printf("syncer: created document %s for %s", doc.ID, entry.Name)
+	}
+
+	// Dedup: skip if latest version already has this content hash.
+	if doc.ID != "" && entry.ContentHash != "" {
+		latest, _ := s.store.GetLatestVersion(ctx, doc.ID)
+		if latest != nil && latest.ContentHash == entry.ContentHash {
+			return nil // Already processed.
+		}
 	}
 
 	// Create a new version.
