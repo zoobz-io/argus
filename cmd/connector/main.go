@@ -27,6 +27,7 @@ import (
 	"github.com/zoobz-io/argus/events"
 	"github.com/zoobz-io/argus/internal/boot"
 	"github.com/zoobz-io/argus/internal/connector"
+	"github.com/zoobz-io/argus/internal/shutdown"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/provider"
 	"github.com/zoobz-io/argus/provider/azureblob"
@@ -48,8 +49,10 @@ func main() {
 
 func run() error {
 	log.Println("starting connector...")
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+
+	// Signal context: cancelled on SIGTERM/SIGINT. Stops accepting new work.
+	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer sigCancel()
 
 	// Initialize sum service and registry.
 	_ = sum.New()
@@ -59,25 +62,25 @@ func run() error {
 	// 1. Load Configuration
 	// =========================================================================
 
-	if err := sum.Config[config.Database](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Database](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load database config: %w", err)
 	}
-	if err := sum.Config[config.Storage](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Storage](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load storage config: %w", err)
 	}
-	if err := sum.Config[config.Redis](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Redis](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load redis config: %w", err)
 	}
-	if err := sum.Config[config.OpenSearch](ctx, k, nil); err != nil {
+	if err := sum.Config[config.OpenSearch](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load opensearch config: %w", err)
 	}
-	if err := sum.Config[config.OTEL](ctx, k, nil); err != nil {
+	if err := sum.Config[config.OTEL](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load otel config: %w", err)
 	}
-	if err := sum.Config[config.Providers](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Providers](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load providers config: %w", err)
 	}
-	if err := sum.Config[config.Connector](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Connector](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load connector config: %w", err)
 	}
 
@@ -85,24 +88,24 @@ func run() error {
 	// 2. Connect to Infrastructure
 	// =========================================================================
 
-	db, err := boot.Database(ctx)
+	db, err := boot.Database(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
 
-	bucketProvider, err := boot.Storage(ctx)
+	bucketProvider, err := boot.Storage(sigCtx)
 	if err != nil {
 		return err
 	}
 
-	redisClient, err := boot.Redis(ctx)
+	redisClient, err := boot.Redis(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = redisClient.Close() }()
 
-	searchProvider, err := boot.OpenSearch(ctx)
+	searchProvider, err := boot.OpenSearch(sigCtx)
 	if err != nil {
 		return err
 	}
@@ -118,7 +121,7 @@ func run() error {
 	// 4. Register Provider Implementations
 	// =========================================================================
 
-	providersCfg := sum.MustUse[config.Providers](ctx)
+	providersCfg := sum.MustUse[config.Providers](sigCtx)
 	registry := provider.NewRegistry()
 
 	if providersCfg.GoogleClientID != "" {
@@ -158,13 +161,13 @@ func run() error {
 
 	sum.Freeze(k)
 
-	otelProviders, err := boot.OTEL(ctx, "argus-connector")
+	otelProviders, err := boot.OTEL(sigCtx, "argus-connector")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = otelProviders.Shutdown(ctx) }()
+	defer func() { _ = otelProviders.Shutdown(sigCtx) }()
 
-	ap, err := boot.Aperture(ctx, otelProviders)
+	ap, err := boot.Aperture(sigCtx, otelProviders)
 	if err != nil {
 		return err
 	}
@@ -215,25 +218,35 @@ func run() error {
 	log.Println("audit publisher initialized")
 
 	// =========================================================================
-	// 9. Hook FetchSignal → Fetcher
+	// 9. Hook FetchSignal → Fetcher (with drain tracking)
 	// =========================================================================
 
-	capitan.Hook(events.FetchSignal, func(ctx context.Context, e *capitan.Event) {
+	// Work context: independent of signal — allows in-flight fetches to finish.
+	workCtx, workCancel := context.WithCancel(context.Background())
+	defer workCancel()
+
+	var drainer shutdown.Drainer
+
+	capitan.Hook(events.FetchSignal, func(_ context.Context, e *capitan.Event) {
 		msg, ok := events.FetchKey.From(e)
 		if !ok {
 			return
 		}
 		log.Printf("fetching version %s (document %s)", msg.VersionID, msg.DocumentID)
-		if err := fetcher.HandleFetch(ctx, msg); err != nil {
-			log.Printf("fetch error for version %s: %v", msg.VersionID, err)
-		}
+		done := drainer.Track(msg.VersionID)
+		go func() {
+			defer done()
+			if err := fetcher.HandleFetch(workCtx, msg); err != nil {
+				log.Printf("fetch error for version %s: %v", msg.VersionID, err)
+			}
+		}()
 	})
 
 	// =========================================================================
 	// 10. Start Syncer
 	// =========================================================================
 
-	connectorCfg := sum.MustUse[config.Connector](ctx)
+	connectorCfg := sum.MustUse[config.Connector](sigCtx)
 	syncStore := &syncStoreAdapter{
 		wp:   allStores.WatchedPaths,
 		docs: allStores.Documents,
@@ -244,7 +257,7 @@ func run() error {
 
 	syncErr := make(chan error, 1)
 	go func() {
-		syncErr <- syncer.Run(ctx)
+		syncErr <- syncer.Run(sigCtx)
 	}()
 
 	// =========================================================================
@@ -253,13 +266,21 @@ func run() error {
 
 	log.Println("connector ready")
 	select {
-	case <-ctx.Done():
+	case <-sigCtx.Done():
 	case err := <-syncErr:
 		if err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("syncer error: %w", err)
 		}
 	}
-	log.Println("shutting down...")
+	log.Println("shutting down — draining in-flight fetches...")
+
+	// Phase 1: Drain in-flight fetch operations.
+	drainer.Drain(connectorCfg.DrainTimeout)
+
+	// Phase 2: Cancel work context.
+	workCancel()
+
+	log.Println("connector stopped")
 	return nil
 }
 

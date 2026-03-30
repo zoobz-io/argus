@@ -25,6 +25,7 @@ import (
 	"github.com/zoobz-io/argus/internal/boot"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/ingest"
+	"github.com/zoobz-io/argus/internal/shutdown"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/stores"
 
@@ -39,8 +40,10 @@ func main() {
 
 func run() error {
 	log.Println("starting worker...")
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+
+	// Signal context: cancelled on SIGTERM/SIGINT. Stops accepting new work.
+	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer sigCancel()
 
 	// Initialize sum service and registry.
 	_ = sum.New()
@@ -50,37 +53,37 @@ func run() error {
 	// 1. Load Configuration
 	// =========================================================================
 
-	if err := sum.Config[config.Database](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Database](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load database config: %w", err)
 	}
-	if err := sum.Config[config.Storage](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Storage](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load storage config: %w", err)
 	}
-	if err := sum.Config[config.Redis](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Redis](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load redis config: %w", err)
 	}
-	if err := sum.Config[config.OpenSearch](ctx, k, nil); err != nil {
+	if err := sum.Config[config.OpenSearch](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load opensearch config: %w", err)
 	}
-	if err := sum.Config[config.OCR](ctx, k, nil); err != nil {
+	if err := sum.Config[config.OCR](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load ocr config: %w", err)
 	}
-	if err := sum.Config[config.Convert](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Convert](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load convert config: %w", err)
 	}
-	if err := sum.Config[config.Classify](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Classify](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load classify config: %w", err)
 	}
-	if err := sum.Config[config.LLM](ctx, k, nil); err != nil {
+	if err := sum.Config[config.LLM](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load llm config: %w", err)
 	}
-	if err := sum.Config[config.Embedding](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Embedding](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load embedding config: %w", err)
 	}
-	if err := sum.Config[config.OTEL](ctx, k, nil); err != nil {
+	if err := sum.Config[config.OTEL](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load otel config: %w", err)
 	}
-	if err := sum.Config[config.Worker](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Worker](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load worker config: %w", err)
 	}
 
@@ -88,52 +91,52 @@ func run() error {
 	// 2. Connect to Infrastructure
 	// =========================================================================
 
-	db, err := boot.Database(ctx)
+	db, err := boot.Database(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
 
-	bucketProvider, err := boot.Storage(ctx)
+	bucketProvider, err := boot.Storage(sigCtx)
 	if err != nil {
 		return err
 	}
 
-	redisClient, err := boot.Redis(ctx)
+	redisClient, err := boot.Redis(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = redisClient.Close() }()
 
-	searchProvider, err := boot.OpenSearch(ctx)
+	searchProvider, err := boot.OpenSearch(sigCtx)
 	if err != nil {
 		return err
 	}
 
-	ocrConn, ocrClient, err := boot.OCR(ctx)
+	ocrConn, ocrClient, err := boot.OCR(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = ocrConn.Close() }()
 
-	convertConn, convertClient, err := boot.Convert(ctx)
+	convertConn, convertClient, err := boot.Convert(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = convertConn.Close() }()
 
-	classifyConn, classifyClient, err := boot.Classify(ctx)
+	classifyConn, classifyClient, err := boot.Classify(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = classifyConn.Close() }()
 
-	analyzer, err := boot.LLM(ctx)
+	analyzer, err := boot.LLM(sigCtx)
 	if err != nil {
 		return err
 	}
 
-	embedService, err := boot.Embedding(ctx)
+	embedService, err := boot.Embedding(sigCtx)
 	if err != nil {
 		return err
 	}
@@ -168,13 +171,13 @@ func run() error {
 	// 5. Initialize Observability (OTEL + Aperture)
 	// =========================================================================
 
-	otelProviders, err := boot.OTEL(ctx, "argus-worker")
+	otelProviders, err := boot.OTEL(sigCtx, "argus-worker")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = otelProviders.Shutdown(ctx) }()
+	defer func() { _ = otelProviders.Shutdown(sigCtx) }()
 
-	ap, err := boot.Aperture(ctx, otelProviders)
+	ap, err := boot.Aperture(sigCtx, otelProviders)
 	if err != nil {
 		return err
 	}
@@ -301,7 +304,7 @@ func run() error {
 	// 9. Herald Subscriber: argus:ingestion → run pipeline
 	// =========================================================================
 
-	workerCfg := sum.MustUse[config.Worker](ctx)
+	workerCfg := sum.MustUse[config.Worker](sigCtx)
 	hostname := boot.Hostname()
 
 	ingestStream := heraldredis.New("argus:ingestion",
@@ -317,11 +320,17 @@ func run() error {
 			herald.WithRetry[events.IngestMessage](3),
 		},
 	)
-	ingestSub.Start(ctx)
+	ingestSub.Start(sigCtx)
 	defer func() { _ = ingestSub.Close() }()
 	log.Println("ingestion queue subscriber started")
 
 	// WorkerPool: bounded pipeline concurrency.
+	// Work context: independent of signal — allows in-flight jobs to finish.
+	workCtx, workCancel := context.WithCancel(context.Background())
+	defer workCancel()
+
+	var drainer shutdown.Drainer
+
 	processor := pipz.Apply(
 		pipz.NewIdentity("ingest-worker", "Process ingestion job"),
 		func(ctx context.Context, job ingestJob) (ingestJob, error) {
@@ -340,13 +349,17 @@ func run() error {
 	)
 	defer func() { _ = pool.Close() }()
 
-	capitan.Hook(events.IngestQueueSignal, func(ctx context.Context, e *capitan.Event) {
+	capitan.Hook(events.IngestQueueSignal, func(_ context.Context, e *capitan.Event) {
 		msg, ok := events.IngestQueueKey.From(e)
 		if !ok {
 			return
 		}
 		log.Printf("processing job %s (version %s)", msg.JobID, msg.VersionID)
-		_, _ = pool.Process(ctx, ingestJob{JobID: msg.JobID, VersionID: msg.VersionID})
+		done := drainer.Track(msg.JobID)
+		go func() {
+			defer done()
+			_, _ = pool.Process(workCtx, ingestJob{JobID: msg.JobID, VersionID: msg.VersionID})
+		}()
 	})
 
 	// =========================================================================
@@ -354,8 +367,33 @@ func run() error {
 	// =========================================================================
 
 	log.Println("worker ready")
-	<-ctx.Done()
-	log.Println("shutting down...")
+	<-sigCtx.Done()
+	log.Println("shutting down — draining in-flight jobs...")
+
+	// Phase 1: Drain in-flight work.
+	interrupted := drainer.Drain(workerCfg.DrainTimeout)
+
+	// Mark interrupted jobs as failed.
+	if len(interrupted) > 0 {
+		markCtx, markCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer markCancel()
+		shutdownErr := "interrupted by shutdown"
+		for _, jobID := range interrupted {
+			if err := allStores.Jobs.UpdateJobStatus(markCtx, jobID, models.JobFailed, &shutdownErr); err != nil {
+				log.Printf("shutdown: failed to mark job %s as failed: %v", jobID, err)
+			}
+		}
+	}
+
+	// Phase 2: Cancel work context (stops any lingering operations).
+	workCancel()
+
+	// Phase 3: Remove consumer from Redis group.
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cleanupCancel()
+	shutdown.RemoveConsumer(cleanupCtx, redisClient, "argus:ingestion", workerCfg.ConsumerGroup, hostname)
+
+	log.Println("worker stopped")
 	return nil
 }
 

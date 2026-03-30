@@ -25,6 +25,7 @@ import (
 	"github.com/zoobz-io/argus/internal/boot"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
 	"github.com/zoobz-io/argus/internal/notify"
+	"github.com/zoobz-io/argus/internal/shutdown"
 	"github.com/zoobz-io/argus/models"
 	"github.com/zoobz-io/argus/stores"
 
@@ -39,8 +40,10 @@ func main() {
 
 func run() error {
 	log.Println("starting notifier...")
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+
+	// Signal context: cancelled on SIGTERM/SIGINT. Stops accepting new work.
+	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer sigCancel()
 
 	// Initialize sum service and registry.
 	_ = sum.New()
@@ -50,16 +53,16 @@ func run() error {
 	// 1. Load Configuration
 	// =========================================================================
 
-	if err := sum.Config[config.Database](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Database](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load database config: %w", err)
 	}
-	if err := sum.Config[config.Redis](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Redis](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load redis config: %w", err)
 	}
-	if err := sum.Config[config.OpenSearch](ctx, k, nil); err != nil {
+	if err := sum.Config[config.OpenSearch](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load opensearch config: %w", err)
 	}
-	if err := sum.Config[config.Notifier](ctx, k, nil); err != nil {
+	if err := sum.Config[config.Notifier](sigCtx, k, nil); err != nil {
 		return fmt.Errorf("failed to load notifier config: %w", err)
 	}
 
@@ -67,25 +70,25 @@ func run() error {
 	// 2. Connect to Infrastructure
 	// =========================================================================
 
-	db, err := boot.Database(ctx)
+	db, err := boot.Database(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
 
-	redisClient, err := boot.Redis(ctx)
+	redisClient, err := boot.Redis(sigCtx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = redisClient.Close() }()
 
-	searchProvider, err := boot.OpenSearch(ctx)
+	searchProvider, err := boot.OpenSearch(sigCtx)
 	if err != nil {
 		return err
 	}
 
-	osCfg := sum.MustUse[config.OpenSearch](ctx)
-	if err := boot.EnsureIndices(ctx, osCfg.Addr); err != nil {
+	osCfg := sum.MustUse[config.OpenSearch](sigCtx)
+	if err := boot.EnsureIndices(sigCtx, osCfg.Addr); err != nil {
 		return fmt.Errorf("ensuring opensearch indices: %w", err)
 	}
 
@@ -122,7 +125,7 @@ func run() error {
 	// 5. Herald Subscriber (notification stream)
 	// =========================================================================
 
-	notifCfg := sum.MustUse[config.Notifier](ctx)
+	notifCfg := sum.MustUse[config.Notifier](sigCtx)
 	hostname := boot.Hostname()
 
 	notifStream := heraldredis.New("argus:notifications",
@@ -138,7 +141,7 @@ func run() error {
 			herald.WithRetry[models.Notification](3),
 		},
 	)
-	notifSub.Start(ctx)
+	notifSub.Start(sigCtx)
 	defer func() { _ = notifSub.Close() }()
 	log.Println("herald subscriber started")
 
@@ -147,6 +150,13 @@ func run() error {
 	// =========================================================================
 
 	inputCh := make(chan streamz.Result[models.Notification])
+
+	// Work context: independent of signal — allows in-flight notifications
+	// to finish processing through the pipeline.
+	workCtx, workCancel := context.WithCancel(context.Background())
+	defer workCancel()
+
+	var drainer shutdown.Drainer
 
 	expander := streamz.NewAsyncMapper(func(ctx context.Context, notif models.Notification) ([]*notify.FanOutItem, error) {
 		subs, err := subStore.FindByTenantAndEventType(ctx, notif.TenantID, string(notif.Type))
@@ -165,7 +175,7 @@ func run() error {
 		return items, nil
 	}).WithWorkers(4).WithName("notification-expander")
 
-	expandedCh := expander.Process(ctx, inputCh)
+	expandedCh := expander.Process(workCtx, inputCh)
 
 	// =========================================================================
 	// 7. Pipeline runner: process each FanOutItem via streamz.Tap
@@ -173,7 +183,7 @@ func run() error {
 
 	runner := streamz.NewTap(func(result streamz.Result[[]*notify.FanOutItem]) {
 		if result.IsError() {
-			capitan.Error(ctx, events.NotifierFanOutError,
+			capitan.Error(workCtx, events.NotifierFanOutError,
 				events.NotifierErrorKey.Field(result.Error().Unwrap()),
 			)
 			return
@@ -182,37 +192,41 @@ func run() error {
 			var err error
 			switch item.Subscription.Channel {
 			case models.SubscriptionChannelWebhook:
-				_, err = webhookPipeline.Process(ctx, item)
+				_, err = webhookPipeline.Process(workCtx, item)
 			default:
-				_, err = inboxPipeline.Process(ctx, item)
+				_, err = inboxPipeline.Process(workCtx, item)
 			}
 			if err != nil {
-				capitan.Error(ctx, events.NotifierFanOutError,
+				capitan.Error(workCtx, events.NotifierFanOutError,
 					events.NotifierTypeKey.Field(string(item.Notification.Type)),
 					events.NotifierErrorKey.Field(err),
 				)
 				continue
 			}
-			capitan.Info(ctx, events.NotifierFanOutCompleted,
+			capitan.Info(workCtx, events.NotifierFanOutCompleted,
 				events.NotifierTypeKey.Field(string(item.Notification.Type)),
 			)
 		}
 	}).WithName("pipeline-runner")
-	_ = runner.Process(ctx, expandedCh)
+	_ = runner.Process(workCtx, expandedCh)
 
 	// =========================================================================
 	// 8. Herald hook: feed notifications into streamz input channel
 	// =========================================================================
 
-	capitan.Hook(events.NotificationSignal, func(ctx context.Context, e *capitan.Event) {
+	capitan.Hook(events.NotificationSignal, func(_ context.Context, e *capitan.Event) {
 		notif, ok := events.NotificationKey.From(e)
 		if !ok {
 			return
 		}
-		select {
-		case inputCh <- streamz.NewSuccess(notif):
-		case <-ctx.Done():
-		}
+		done := drainer.Track(notif.ID)
+		go func() {
+			defer done()
+			select {
+			case inputCh <- streamz.NewSuccess(notif):
+			case <-workCtx.Done():
+			}
+		}()
 	})
 
 	log.Println("notification fan-out pipeline registered")
@@ -234,23 +248,23 @@ func run() error {
 			herald.WithRetry[models.AuditEntry](3),
 		},
 	)
-	auditSub.Start(ctx)
+	auditSub.Start(sigCtx)
 	defer func() { _ = auditSub.Close() }()
 	log.Println("audit subscriber started")
 
-	capitan.Hook(events.AuditSignal, func(ctx context.Context, e *capitan.Event) {
+	capitan.Hook(events.AuditSignal, func(_ context.Context, e *capitan.Event) {
 		entry, ok := events.AuditKey.From(e)
 		if !ok {
 			return
 		}
-		if err := auditStore.Index(ctx, &entry); err != nil {
-			capitan.Error(ctx, events.AuditIndexError,
+		if err := auditStore.Index(workCtx, &entry); err != nil {
+			capitan.Error(workCtx, events.AuditIndexError,
 				events.AuditActionKey.Field(entry.Action),
 				events.AuditErrorKey.Field(err),
 			)
 			return
 		}
-		capitan.Info(ctx, events.AuditIndexed,
+		capitan.Info(workCtx, events.AuditIndexed,
 			events.AuditActionKey.Field(entry.Action),
 		)
 	})
@@ -279,7 +293,24 @@ func run() error {
 	// =========================================================================
 
 	log.Println("notifier ready")
-	<-ctx.Done()
-	log.Println("shutting down...")
+	<-sigCtx.Done()
+	log.Println("shutting down — draining in-flight notifications...")
+
+	// Phase 1: Drain in-flight notification processing.
+	drainer.Drain(notifCfg.DrainTimeout)
+
+	// Phase 2: Close input channel to signal streamz pipeline to drain.
+	close(inputCh)
+
+	// Phase 3: Cancel work context.
+	workCancel()
+
+	// Phase 4: Remove consumers from Redis groups.
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cleanupCancel()
+	shutdown.RemoveConsumer(cleanupCtx, redisClient, "argus:notifications", notifCfg.ConsumerGroup, hostname)
+	shutdown.RemoveConsumer(cleanupCtx, redisClient, "argus:audit", notifCfg.ConsumerGroup, hostname)
+
+	log.Println("notifier stopped")
 	return nil
 }
