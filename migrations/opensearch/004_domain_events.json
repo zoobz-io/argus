@@ -1,0 +1,35 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "properties": {
+      "timestamp": {
+        "type": "date"
+      },
+      "action": {
+        "type": "keyword"
+      },
+      "resource_type": {
+        "type": "keyword"
+      },
+      "resource_id": {
+        "type": "keyword"
+      },
+      "id": {
+        "type": "keyword"
+      },
+      "tenant_id": {
+        "type": "keyword"
+      },
+      "actor_id": {
+        "type": "keyword"
+      },
+      "metadata": {
+        "type": "object",
+        "enabled": true
+      }
+    }
+  }
+}

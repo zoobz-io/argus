@@ -18,9 +18,9 @@ import (
 func TestAdminListAuditLog_Success(t *testing.T) {
 	ts := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
-			return &models.OffsetResult[models.AuditEntry]{
-				Items: []*models.AuditEntry{{
+		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+			return &models.OffsetResult[models.DomainEvent]{
+				Items: []*models.DomainEvent{{
 					ID:           "a-1",
 					Timestamp:    ts,
 					Action:       "tenant.created",
@@ -52,14 +52,14 @@ func TestAdminListAuditLog_Success(t *testing.T) {
 
 func TestAdminListAuditLog_WithTenantFilter(t *testing.T) {
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			if params.TenantID != "t-1" {
 				t.Errorf("TenantID = %q, want t-1", params.TenantID)
 			}
 			if params.Action != "provider.created" {
 				t.Errorf("Action = %q, want provider.created", params.Action)
 			}
-			return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}, Total: 0}, nil
+			return &models.OffsetResult[models.DomainEvent]{Items: []*models.DomainEvent{}, Total: 0}, nil
 		},
 	}
 	engine := argustest.SetupAdminEngine(t, All(),
@@ -72,7 +72,7 @@ func TestAdminListAuditLog_WithTenantFilter(t *testing.T) {
 
 func TestAdminListAuditLog_AllFilters(t *testing.T) {
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			if params.ResourceType != "provider" {
 				t.Errorf("ResourceType = %q, want provider", params.ResourceType)
 			}
@@ -91,7 +91,7 @@ func TestAdminListAuditLog_AllFilters(t *testing.T) {
 			if params.Offset != 10 {
 				t.Errorf("Offset = %d, want 10", params.Offset)
 			}
-			return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}, Total: 0}, nil
+			return &models.OffsetResult[models.DomainEvent]{Items: []*models.DomainEvent{}, Total: 0}, nil
 		},
 	}
 	engine := argustest.SetupAdminEngine(t, All(),
@@ -104,7 +104,7 @@ func TestAdminListAuditLog_AllFilters(t *testing.T) {
 
 func TestAdminListAuditLog_Error(t *testing.T) {
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, _ models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+		OnSearch: func(_ context.Context, _ models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			return nil, fmt.Errorf("search error")
 		},
 	}

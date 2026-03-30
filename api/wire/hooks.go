@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -174,3 +175,43 @@ func (r DeliveryListResponse) Clone() DeliveryListResponse {
 	}
 	return c
 }
+
+// WebhookPayload is the JSON body POST'd to webhook endpoints. It carries
+// the full domain event with typed metadata so consumers can parse payloads
+// per event type via the discriminated union on Action → Metadata.
+//nolint:govet // fieldalignment: readability over alignment for wire types
+type WebhookPayload struct {
+	Timestamp    time.Time            `json:"timestamp" description:"When the event occurred"`
+	Action       string               `json:"action" description:"Event type" example:"provider.created" discriminator:"metadata"`
+	ResourceType string               `json:"resource_type" description:"Resource type" example:"provider"`
+	ResourceID   string               `json:"resource_id" description:"Resource ID"`
+	TenantID     string               `json:"tenant_id" description:"Tenant ID"`
+	ActorID      string               `json:"actor_id" description:"Actor who triggered the event"`
+	Metadata     json.RawMessage      `json:"metadata,omitempty" description:"Event-specific metadata" discriminate:"ProviderCreatedMeta,ProviderUpdatedMeta,ProviderConnectedMeta,ProviderDeletedMeta,DocumentIngestedMeta,WatchedPathCreatedMeta,WatchedPathUpdatedMeta,TopicCreatedMeta,TopicUpdatedMeta,TagCreatedMeta,TagUpdatedMeta,TenantCreatedMeta,TenantUpdatedMeta,TenantDeletedMeta,IngestStageMeta,IngestFailedMeta"`
+	Notification *WebhookNotification `json:"notification" description:"Per-user notification context"`
+}
+
+// WebhookNotification carries the materialized notification context in webhook payloads.
+type WebhookNotification struct {
+	ID      string `json:"id" description:"Notification ID"`
+	UserID  string `json:"user_id" description:"Recipient user ID"`
+	Status  string `json:"status" description:"Notification status"`
+	Message string `json:"message" description:"Human-readable message"`
+}
+
+// Clone returns a deep copy of the payload.
+func (p WebhookPayload) Clone() WebhookPayload {
+	c := p
+	if p.Metadata != nil {
+		c.Metadata = make(json.RawMessage, len(p.Metadata))
+		copy(c.Metadata, p.Metadata)
+	}
+	if p.Notification != nil {
+		n := *p.Notification
+		c.Notification = &n
+	}
+	return c
+}
+
+// Clone returns a copy.
+func (n WebhookNotification) Clone() WebhookNotification { return n }

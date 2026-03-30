@@ -2,18 +2,10 @@ package events
 
 import (
 	"github.com/zoobz-io/capitan"
-
-	"github.com/zoobz-io/argus/models"
 )
 
-// NotificationSignal is emitted when a domain event should become a user notification.
-// Herald publishes this to the notification stream for the sidecar to consume.
-var NotificationSignal = capitan.NewSignal("argus.notification", "Application notification")
-
-// NotificationKey carries the pre-built Notification payload on the signal.
-var NotificationKey = capitan.NewKey[models.Notification]("notification", "models.Notification")
-
-// NotifyHintSignal is emitted when a domain event should be fanned out to subscriber notifications.
+// NotifyHintSignal is emitted after a notification is indexed, carrying minimal
+// data for SSE push to the app. This is a Pub/Sub signal, not a stream.
 var NotifyHintSignal = capitan.NewSignal("argus.notify.hint", "Notification hint for fan-out")
 
 // NotifyHintKey carries the NotifyHint payload on the signal.

@@ -24,6 +24,7 @@ import (
 	"github.com/zoobz-io/argus/events"
 	"github.com/zoobz-io/argus/internal/boot"
 	intcontracts "github.com/zoobz-io/argus/internal/contracts"
+	"github.com/zoobz-io/argus/internal/event"
 	"github.com/zoobz-io/argus/internal/ingest"
 	"github.com/zoobz-io/argus/internal/shutdown"
 	"github.com/zoobz-io/argus/models"
@@ -236,69 +237,52 @@ func run() error {
 	log.Println("job status publisher initialized")
 
 	// =========================================================================
-	// 8. Notification Hooks + Herald Publisher
+	// 8. Domain Event Hooks + Herald Publisher
 	// =========================================================================
 
-	capitan.Hook(events.IngestCompleted, func(ctx context.Context, e *capitan.Event) {
-		versionID, _ := events.IngestVersionIDKey.From(e)
-		documentID, _ := events.IngestDocumentIDKey.From(e)
-		tenantID, _ := events.IngestTenantIDKey.From(e)
-		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
-			TenantID:   tenantID,
-			DocumentID: documentID,
-			VersionID:  versionID,
-			Type:       models.NotificationIngestCompleted,
-			Message:    "Document ingestion completed",
-		}))
-	})
-
-	capitan.Hook(events.IngestFailed, func(ctx context.Context, e *capitan.Event) {
-		versionID, _ := events.IngestVersionIDKey.From(e)
-		documentID, _ := events.IngestDocumentIDKey.From(e)
-		tenantID, _ := events.IngestTenantIDKey.From(e)
-		ingestErr, ok := events.IngestErrorKey.From(e)
-		var errMsg string
-		if ok && ingestErr != nil {
-			errMsg = ingestErr.Error()
+	// Bridge pipeline signals → domain events for audit/notification/webhook.
+	// Uses the capitan signal's Description() as the human-readable message.
+	domainBridge := func(sig capitan.Signal, action string) func(context.Context, *capitan.Event) {
+		desc := sig.Description()
+		return func(ctx context.Context, e *capitan.Event) {
+			versionID, _ := events.IngestVersionIDKey.From(e)
+			documentID, _ := events.IngestDocumentIDKey.From(e)
+			tenantID, _ := events.IngestTenantIDKey.From(e)
+			jobID, _ := events.IngestJobIDKey.From(e)
+			meta := map[string]any{
+				"document_id": documentID,
+				"version_id":  versionID,
+				"job_id":      jobID,
+			}
+			if ingestErr, ok := events.IngestErrorKey.From(e); ok && ingestErr != nil {
+				meta["error"] = ingestErr.Error()
+			}
+			event.Emit(ctx, action, desc, "document", documentID, tenantID, "system", meta)
 		}
-		capitan.Emit(ctx, events.NotificationSignal, events.NotificationKey.Field(models.Notification{
-			TenantID:   tenantID,
-			DocumentID: documentID,
-			VersionID:  versionID,
-			Type:       models.NotificationIngestFailed,
-			Message:    "Document ingestion failed",
-			Error:      errMsg,
-		}))
-	})
+	}
 
-	notifStream := heraldredis.New("argus:notifications", heraldredis.WithClient(redisClient))
-	notifPub := herald.NewPublisher(
-		notifStream,
-		events.NotificationSignal,
-		events.NotificationKey,
-		[]herald.Option[models.Notification]{
-			herald.WithRetry[models.Notification](3),
-			herald.WithBackoff[models.Notification](3, 500*time.Millisecond),
+	capitan.Hook(events.IngestStarted, domainBridge(events.IngestStarted, "ingest.started"))
+	capitan.Hook(events.IngestExtracted, domainBridge(events.IngestExtracted, "ingest.extracted"))
+	capitan.Hook(events.IngestSummarized, domainBridge(events.IngestSummarized, "ingest.summarized"))
+	capitan.Hook(events.IngestEmbedded, domainBridge(events.IngestEmbedded, "ingest.embedded"))
+	capitan.Hook(events.IngestIndexed, domainBridge(events.IngestIndexed, "ingest.indexed"))
+	capitan.Hook(events.IngestCompleted, domainBridge(events.IngestCompleted, "ingest.completed"))
+	capitan.Hook(events.IngestFailed, domainBridge(events.IngestFailed, "ingest.failed"))
+
+	// Single unified events publisher replaces separate audit + notification publishers.
+	eventsStream := heraldredis.New("argus:events", heraldredis.WithClient(redisClient))
+	eventsPub := herald.NewPublisher(
+		eventsStream,
+		events.DomainEventSignal,
+		events.DomainEventKey,
+		[]herald.Option[models.DomainEvent]{
+			herald.WithRetry[models.DomainEvent](3),
+			herald.WithBackoff[models.DomainEvent](3, 500*time.Millisecond),
 		},
 	)
-	notifPub.Start()
-	defer func() { _ = notifPub.Close() }()
-	log.Println("notification hooks and publisher initialized")
-
-	// Audit Publisher: AuditSignal → argus:audit stream
-	auditStream := heraldredis.New("argus:audit", heraldredis.WithClient(redisClient))
-	auditPub := herald.NewPublisher(
-		auditStream,
-		events.AuditSignal,
-		events.AuditKey,
-		[]herald.Option[models.AuditEntry]{
-			herald.WithRetry[models.AuditEntry](3),
-			herald.WithBackoff[models.AuditEntry](3, 500*time.Millisecond),
-		},
-	)
-	auditPub.Start()
-	defer func() { _ = auditPub.Close() }()
-	log.Println("audit publisher initialized")
+	eventsPub.Start()
+	defer func() { _ = eventsPub.Close() }()
+	log.Println("domain events publisher initialized")
 
 	// =========================================================================
 	// 9. Herald Subscriber: argus:ingestion → run pipeline

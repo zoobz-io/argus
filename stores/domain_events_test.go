@@ -16,12 +16,12 @@ import (
 	"github.com/zoobz-io/argus/models"
 )
 
-func newTestAudit(t *testing.T, mock *mockSearchProvider) *Audit {
+func newTestDomainEvents(t *testing.T, mock *mockSearchProvider) *DomainEvents {
 	t.Helper()
 	sum.Reset()
 	t.Cleanup(sum.Reset)
 	sum.New()
-	return NewAudit(mock)
+	return NewDomainEvents(mock)
 }
 
 func TestAudit_Index(t *testing.T) {
@@ -33,8 +33,8 @@ func TestAudit_Index(t *testing.T) {
 		},
 	}
 
-	store := newTestAudit(t, mock)
-	entry := &models.AuditEntry{
+	store := newTestDomainEvents(t, mock)
+	entry := &models.DomainEvent{
 		ID:       "a-1",
 		Action:   "provider.created",
 		TenantID: "t-1",
@@ -55,8 +55,8 @@ func TestAudit_Index_Error(t *testing.T) {
 		},
 	}
 
-	store := newTestAudit(t, mock)
-	err := store.Index(context.Background(), &models.AuditEntry{ID: "a-1"})
+	store := newTestDomainEvents(t, mock)
+	err := store.Index(context.Background(), &models.DomainEvent{ID: "a-1"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -69,7 +69,7 @@ func TestAudit_Search_NoFilters(t *testing.T) {
 			return &grub.SearchResponse{
 				Total: 1,
 				Hits: []grub.SearchHit{
-					{Source: jsonBytes(t, models.AuditEntry{
+					{Source: jsonBytes(t, models.DomainEvent{
 						ID: "a-1", Action: "tenant.created", TenantID: "t-1", Timestamp: ts,
 					})},
 				},
@@ -77,8 +77,8 @@ func TestAudit_Search_NoFilters(t *testing.T) {
 		},
 	}
 
-	store := newTestAudit(t, mock)
-	result, err := store.Search(context.Background(), models.AuditSearchParams{Limit: 20})
+	store := newTestDomainEvents(t, mock)
+	result, err := store.Search(context.Background(), models.DomainEventSearchParams{Limit: 20})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -102,8 +102,8 @@ func TestAudit_Search_AllFilters(t *testing.T) {
 		},
 	}
 
-	store := newTestAudit(t, mock)
-	_, err := store.Search(context.Background(), models.AuditSearchParams{
+	store := newTestDomainEvents(t, mock)
+	_, err := store.Search(context.Background(), models.DomainEventSearchParams{
 		TenantID:     "t-1",
 		Action:       "provider.created",
 		ResourceType: "provider",
@@ -125,8 +125,8 @@ func TestAudit_Search_Error(t *testing.T) {
 		},
 	}
 
-	store := newTestAudit(t, mock)
-	_, err := store.Search(context.Background(), models.AuditSearchParams{Limit: 20})
+	store := newTestDomainEvents(t, mock)
+	_, err := store.Search(context.Background(), models.DomainEventSearchParams{Limit: 20})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -138,7 +138,7 @@ func TestAudit_Search_WithMetadata(t *testing.T) {
 			return &grub.SearchResponse{
 				Total: 1,
 				Hits: []grub.SearchHit{
-					{Source: jsonBytes(t, models.AuditEntry{
+					{Source: jsonBytes(t, models.DomainEvent{
 						ID:       "a-1",
 						Action:   "provider.created",
 						Metadata: json.RawMessage(`{"provider_type":"google_drive"}`),
@@ -148,8 +148,8 @@ func TestAudit_Search_WithMetadata(t *testing.T) {
 		},
 	}
 
-	store := newTestAudit(t, mock)
-	result, err := store.Search(context.Background(), models.AuditSearchParams{Limit: 20})
+	store := newTestDomainEvents(t, mock)
+	result, err := store.Search(context.Background(), models.DomainEventSearchParams{Limit: 20})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

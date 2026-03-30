@@ -4,7 +4,7 @@ import (
 	"github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/argus/api/transformers"
 	"github.com/zoobz-io/argus/api/wire"
-	"github.com/zoobz-io/argus/internal/audit"
+	"github.com/zoobz-io/argus/internal/event"
 	"github.com/zoobz-io/rocco"
 	"github.com/zoobz-io/sum"
 )
@@ -46,7 +46,7 @@ var createProvider = rocco.POST[wire.ProviderCreateRequest, wire.ProviderRespons
 	if err != nil {
 		return wire.ProviderResponse{}, err
 	}
-	audit.Emit(r, "provider.created", "provider", provider.ID, tid, r.Identity.ID(), map[string]any{
+	event.Emit(r, "provider.created", "Provider created", "provider", provider.ID, tid, r.Identity.ID(), map[string]any{
 		"provider_type": string(r.Body.Type),
 		"provider_name": r.Body.Name,
 	})
@@ -66,7 +66,7 @@ var updateProvider = rocco.PUT[wire.ProviderCreateRequest, wire.ProviderResponse
 	if err != nil {
 		return wire.ProviderResponse{}, ErrProviderNotFound
 	}
-	audit.Emit(r, "provider.updated", "provider", provider.ID, tenantID(r.Identity), r.Identity.ID(), map[string]any{
+	event.Emit(r, "provider.updated", "Provider updated", "provider", provider.ID, tenantID(r.Identity), r.Identity.ID(), map[string]any{
 		"provider_type": string(r.Body.Type),
 		"provider_name": r.Body.Name,
 	})

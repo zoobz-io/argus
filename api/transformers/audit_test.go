@@ -10,9 +10,9 @@ import (
 	"github.com/zoobz-io/argus/models"
 )
 
-func TestAuditEntryToResponse(t *testing.T) {
+func TestDomainEventToResponse(t *testing.T) {
 	ts := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
-	e := &models.AuditEntry{
+	e := &models.DomainEvent{
 		ID:           "a-1",
 		Timestamp:    ts,
 		Action:       "provider.created",
@@ -23,7 +23,7 @@ func TestAuditEntryToResponse(t *testing.T) {
 		Metadata:     json.RawMessage(`{"provider_type":"google_drive"}`),
 	}
 
-	resp := AuditEntryToResponse(e)
+	resp := DomainEventToResponse(e)
 
 	if resp.ID != "a-1" {
 		t.Errorf("ID = %q, want a-1", resp.ID)
@@ -48,17 +48,17 @@ func TestAuditEntryToResponse(t *testing.T) {
 	}
 }
 
-func TestAuditEntriesToListResponse(t *testing.T) {
-	e1 := &models.AuditEntry{ID: "a-1", Action: "provider.created"}
-	e2 := &models.AuditEntry{ID: "a-2", Action: "tenant.created"}
+func TestDomainEventsToListResponse(t *testing.T) {
+	e1 := &models.DomainEvent{ID: "a-1", Action: "provider.created"}
+	e2 := &models.DomainEvent{ID: "a-2", Action: "tenant.created"}
 
-	result := &models.OffsetResult[models.AuditEntry]{
-		Items:  []*models.AuditEntry{e1, e2},
+	result := &models.OffsetResult[models.DomainEvent]{
+		Items:  []*models.DomainEvent{e1, e2},
 		Total:  5,
 		Offset: 10,
 	}
 
-	resp := AuditEntriesToListResponse(result)
+	resp := DomainEventsToListResponse(result)
 	if len(resp.Entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(resp.Entries))
 	}
@@ -76,12 +76,12 @@ func TestAuditEntriesToListResponse(t *testing.T) {
 	}
 }
 
-func TestAuditEntriesToListResponse_Empty(t *testing.T) {
-	result := &models.OffsetResult[models.AuditEntry]{
-		Items: []*models.AuditEntry{},
+func TestDomainEventsToListResponse_Empty(t *testing.T) {
+	result := &models.OffsetResult[models.DomainEvent]{
+		Items: []*models.DomainEvent{},
 		Total: 0,
 	}
-	resp := AuditEntriesToListResponse(result)
+	resp := DomainEventsToListResponse(result)
 	if len(resp.Entries) != 0 {
 		t.Errorf("expected empty, got %d", len(resp.Entries))
 	}

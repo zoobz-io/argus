@@ -27,7 +27,11 @@ func newWebhookDeliverStage() pipz.Chainable[*FanOutItem] {
 
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Argus-Signature", item.WebhookSignature)
-			req.Header.Set("X-Argus-Event", string(item.Notification.Type))
+			eventType := string(item.Notification.Type)
+			if item.DomainEvent != nil {
+				eventType = item.DomainEvent.Action
+			}
+			req.Header.Set("X-Argus-Event", eventType)
 			req.Header.Set("X-Argus-Delivery", item.Notification.ID)
 			req.Header.Set("X-Argus-Timestamp", item.WebhookTimestamp)
 

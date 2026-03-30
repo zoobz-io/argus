@@ -16,7 +16,7 @@ type AuditEntryResponse struct {
 	ResourceID   string          `json:"resource_id" description:"Resource ID"`
 	ID           string          `json:"id" description:"Audit entry ID"`
 	ActorID      string          `json:"actor_id" description:"Actor who performed the action"`
-	Metadata     json.RawMessage `json:"metadata,omitempty" description:"Action-specific metadata" discriminate:"ProviderCreatedMeta,ProviderUpdatedMeta,ProviderConnectedMeta,ProviderDeletedMeta,DocumentIngestedMeta,WatchedPathCreatedMeta,WatchedPathUpdatedMeta,TopicCreatedMeta,TopicUpdatedMeta,TagCreatedMeta,TagUpdatedMeta,TenantCreatedMeta,TenantUpdatedMeta,TenantDeletedMeta"`
+	Metadata     json.RawMessage `json:"metadata,omitempty" description:"Action-specific metadata" discriminate:"ProviderCreatedMeta,ProviderUpdatedMeta,ProviderConnectedMeta,ProviderDeletedMeta,DocumentIngestedMeta,WatchedPathCreatedMeta,WatchedPathUpdatedMeta,TopicCreatedMeta,TopicUpdatedMeta,TagCreatedMeta,TagUpdatedMeta,TenantCreatedMeta,TenantUpdatedMeta,TenantDeletedMeta,IngestStageMeta,IngestFailedMeta"`
 }
 
 // OnSend applies boundary masking before the response is marshaled.
@@ -183,3 +183,26 @@ type TenantDeletedMeta struct{}
 
 // Clone returns a copy.
 func (m TenantDeletedMeta) Clone() TenantDeletedMeta { return m }
+
+// IngestStageMeta carries metadata for pipeline stage events:
+// ingest.started, ingest.extracted, ingest.summarized, ingest.embedded,
+// ingest.indexed, ingest.completed.
+type IngestStageMeta struct {
+	DocumentID string `json:"document_id"`
+	VersionID  string `json:"version_id"`
+	JobID      string `json:"job_id"`
+}
+
+// Clone returns a copy.
+func (m IngestStageMeta) Clone() IngestStageMeta { return m }
+
+// IngestFailedMeta carries metadata for ingest.failed events.
+type IngestFailedMeta struct {
+	DocumentID string `json:"document_id"`
+	VersionID  string `json:"version_id"`
+	JobID      string `json:"job_id"`
+	Error      string `json:"error"`
+}
+
+// Clone returns a copy.
+func (m IngestFailedMeta) Clone() IngestFailedMeta { return m }

@@ -11,27 +11,27 @@ import (
 	"github.com/zoobz-io/argus/models"
 )
 
-// Audit wraps a search index for compliance audit entries.
-type Audit struct {
-	index *sum.Search[models.AuditEntry]
-	qb    *lucene.Builder[models.AuditEntry]
+// DomainEvents wraps a search index for domain events (unified audit + notification source).
+type DomainEvents struct {
+	index *sum.Search[models.DomainEvent]
+	qb    *lucene.Builder[models.DomainEvent]
 }
 
-// NewAudit creates a new audit search store.
-func NewAudit(provider grub.SearchProvider) *Audit {
-	return &Audit{
-		index: sum.NewSearch[models.AuditEntry](provider, "audit"),
-		qb:    lucene.New[models.AuditEntry](),
+// NewDomainEvents creates a new domain events search store.
+func NewDomainEvents(provider grub.SearchProvider) *DomainEvents {
+	return &DomainEvents{
+		index: sum.NewSearch[models.DomainEvent](provider, "domain_events"),
+		qb:    lucene.New[models.DomainEvent](),
 	}
 }
 
-// Index writes an audit entry to the search index.
-func (s *Audit) Index(ctx context.Context, entry *models.AuditEntry) error {
-	return s.index.Index(ctx, entry.ID, entry)
+// Index writes a domain event to the search index.
+func (s *DomainEvents) Index(ctx context.Context, event *models.DomainEvent) error {
+	return s.index.Index(ctx, event.ID, event)
 }
 
-// Search queries audit entries with optional filters.
-func (s *Audit) Search(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+// Search queries domain events with optional filters.
+func (s *DomainEvents) Search(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 	var filters []lucene.Query
 
 	if params.TenantID != "" {
@@ -61,15 +61,15 @@ func (s *Audit) Search(ctx context.Context, params models.AuditSearchParams) (*m
 
 	result, err := s.index.Execute(ctx, search)
 	if err != nil {
-		return nil, fmt.Errorf("searching audit entries: %w", err)
+		return nil, fmt.Errorf("searching domain events: %w", err)
 	}
 
-	items := make([]*models.AuditEntry, len(result.Hits))
+	items := make([]*models.DomainEvent, len(result.Hits))
 	for i, hit := range result.Hits {
 		e := hit.Content
 		items[i] = &e
 	}
-	return &models.OffsetResult[models.AuditEntry]{
+	return &models.OffsetResult[models.DomainEvent]{
 		Items:  items,
 		Total:  result.Total,
 		Offset: params.Offset,
