@@ -61,7 +61,8 @@ var createProvider = rocco.POST[wire.ProviderCreateRequest, wire.ProviderRespons
 var updateProvider = rocco.PUT[wire.ProviderCreateRequest, wire.ProviderResponse]("/providers/{id}", func(r *rocco.Request[wire.ProviderCreateRequest]) (wire.ProviderResponse, error) {
 	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Providers](r)
-	provider, err := store.UpdateProvider(r, id, r.Body.Type, r.Body.Name, r.Body.Credentials)
+	tid := tenantID(r.Identity)
+	provider, err := store.UpdateProvider(r, tid, id, r.Body.Type, r.Body.Name, r.Body.Credentials)
 	if err != nil {
 		return wire.ProviderResponse{}, ErrProviderNotFound
 	}

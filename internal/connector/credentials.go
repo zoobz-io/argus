@@ -15,7 +15,7 @@ import (
 // ProviderStore defines the database operations needed by the credential manager.
 type ProviderStore interface {
 	GetProvider(ctx context.Context, id string) (*models.Provider, error)
-	UpdateProviderCredentials(ctx context.Context, id, credentials string) error
+	UpdateProviderCredentials(ctx context.Context, tenantID, id, credentials string) error
 }
 
 // CredentialManager loads, caches, and refreshes provider credentials.
@@ -53,7 +53,7 @@ func (cm *CredentialManager) Get(ctx context.Context, providerID string) (*provi
 
 // Update persists updated credentials to the database and cache.
 // Called when a provider returns refreshed tokens after a data operation.
-func (cm *CredentialManager) Update(ctx context.Context, providerID string, creds *provider.Credentials) error {
+func (cm *CredentialManager) Update(ctx context.Context, tenantID, providerID string, creds *provider.Credentials) error {
 	if creds == nil {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (cm *CredentialManager) Update(ctx context.Context, providerID string, cred
 		return fmt.Errorf("marshaling credentials: %w", err)
 	}
 
-	if err := cm.store.UpdateProviderCredentials(ctx, providerID, string(data)); err != nil {
+	if err := cm.store.UpdateProviderCredentials(ctx, tenantID, providerID, string(data)); err != nil {
 		return fmt.Errorf("persisting credentials: %w", err)
 	}
 

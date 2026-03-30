@@ -46,9 +46,9 @@ func (s *Providers) CreateProvider(ctx context.Context, tenantID string, provide
 	return p, nil
 }
 
-// UpdateProvider updates an existing provider.
-func (s *Providers) UpdateProvider(ctx context.Context, id string, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
-	p, err := s.GetProvider(ctx, id)
+// UpdateProvider updates an existing provider after verifying tenant ownership.
+func (s *Providers) UpdateProvider(ctx context.Context, tenantID, id string, providerType models.ProviderType, name string, credentials string) (*models.Provider, error) {
+	p, err := s.GetProviderByTenant(ctx, id, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,10 +79,10 @@ func (s *Providers) GetProviderByTenant(ctx context.Context, id, tenantID string
 	return results[0], nil
 }
 
-// UpdateProviderCredentials stores credentials and marks the provider active.
+// UpdateProviderCredentials stores credentials and marks the provider active, after verifying tenant ownership.
 // Uses s.Set() to trigger BeforeSave → cereal boundary → AES encryption.
-func (s *Providers) UpdateProviderCredentials(ctx context.Context, id, credentials string) error {
-	p, err := s.GetProvider(ctx, id)
+func (s *Providers) UpdateProviderCredentials(ctx context.Context, tenantID, id, credentials string) error {
+	p, err := s.GetProviderByTenant(ctx, id, tenantID)
 	if err != nil {
 		return fmt.Errorf("updating provider credentials: %w", err)
 	}

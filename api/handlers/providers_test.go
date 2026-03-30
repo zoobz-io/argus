@@ -116,7 +116,7 @@ func TestCreateProvider_Success(t *testing.T) {
 
 func TestUpdateProvider_Success(t *testing.T) {
 	mock := &argustest.MockProviders{
-		OnUpdateProvider: func(_ context.Context, id string, pt models.ProviderType, name, creds string) (*models.Provider, error) {
+		OnUpdateProvider: func(_ context.Context, _, id string, pt models.ProviderType, name, creds string) (*models.Provider, error) {
 			return &models.Provider{ID: id, Type: pt, Name: name, Active: true}, nil
 		},
 	}
@@ -136,7 +136,7 @@ func TestUpdateProvider_Success(t *testing.T) {
 
 func TestUpdateProvider_NotFound(t *testing.T) {
 	mock := &argustest.MockProviders{
-		OnUpdateProvider: func(_ context.Context, _ string, _ models.ProviderType, _, _ string) (*models.Provider, error) {
+		OnUpdateProvider: func(_ context.Context, _, _ string, _ models.ProviderType, _, _ string) (*models.Provider, error) {
 			return nil, fmt.Errorf("not found")
 		},
 	}

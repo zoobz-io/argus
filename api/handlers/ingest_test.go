@@ -14,14 +14,14 @@ import (
 )
 
 func TestIngestRequest_Clone(t *testing.T) {
-	orig := IngestRequest{VersionID: "v1"}
+	orig := wire.IngestRequest{VersionID: "v1"}
 	if orig.Clone() != orig {
 		t.Error("clone mismatch")
 	}
 }
 
 func TestIngestResponse_Clone(t *testing.T) {
-	orig := IngestResponse{JobID: "j1", Status: "pending"}
+	orig := wire.IngestResponse{JobID: "j1", Status: "pending"}
 	if orig.Clone() != orig {
 		t.Error("clone mismatch")
 	}
@@ -37,7 +37,7 @@ func TestTriggerIngest_Success(t *testing.T) {
 	}
 	engine := argustest.SetupAPIEngine(t, All(), argustest.WithAPIIngestEnqueuer(mock), argustest.WithBoundaries(wire.RegisterBoundaries))
 
-	body := IngestRequest{VersionID: "v1"}
+	body := wire.IngestRequest{VersionID: "v1"}
 	capture := rtesting.ServeRequest(engine, "POST", "/ingest", body)
 	rtesting.AssertStatus(t, capture, 200)
 
@@ -45,7 +45,7 @@ func TestTriggerIngest_Success(t *testing.T) {
 		t.Errorf("expected v1, got %q", capturedVersionID)
 	}
 
-	var resp IngestResponse
+	var resp wire.IngestResponse
 	if err := capture.DecodeJSON(&resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestTriggerIngest_Error(t *testing.T) {
 	}
 	engine := argustest.SetupAPIEngine(t, All(), argustest.WithAPIIngestEnqueuer(mock), argustest.WithBoundaries(wire.RegisterBoundaries))
 
-	body := IngestRequest{VersionID: "v1"}
+	body := wire.IngestRequest{VersionID: "v1"}
 	capture := rtesting.ServeRequest(engine, "POST", "/ingest", body)
 	if capture.StatusCode() == 200 {
 		t.Error("expected error status")

@@ -13,7 +13,7 @@ import (
 
 type mockProviderStore struct {
 	onGetProvider              func(ctx context.Context, id string) (*models.Provider, error)
-	onUpdateProviderCredentials func(ctx context.Context, id, credentials string) error
+	onUpdateProviderCredentials func(ctx context.Context, tenantID, id, credentials string) error
 }
 
 func (m *mockProviderStore) GetProvider(ctx context.Context, id string) (*models.Provider, error) {
@@ -23,9 +23,9 @@ func (m *mockProviderStore) GetProvider(ctx context.Context, id string) (*models
 	return &models.Provider{}, nil
 }
 
-func (m *mockProviderStore) UpdateProviderCredentials(ctx context.Context, id, credentials string) error {
+func (m *mockProviderStore) UpdateProviderCredentials(ctx context.Context, tenantID, id, credentials string) error {
 	if m.onUpdateProviderCredentials != nil {
-		return m.onUpdateProviderCredentials(ctx, id, credentials)
+		return m.onUpdateProviderCredentials(ctx, tenantID, id, credentials)
 	}
 	return nil
 }
@@ -107,7 +107,7 @@ func TestCredentialManager_Get_InvalidJSON(t *testing.T) {
 func TestCredentialManager_Update_PersistsAndCaches(t *testing.T) {
 	var storedCreds string
 	store := &mockProviderStore{
-		onUpdateProviderCredentials: func(_ context.Context, _, creds string) error {
+		onUpdateProviderCredentials: func(_ context.Context, _, _, creds string) error {
 			storedCreds = creds
 			return nil
 		},
@@ -116,7 +116,7 @@ func TestCredentialManager_Update_PersistsAndCaches(t *testing.T) {
 	cm := NewCredentialManager(store)
 	creds := &provider.Credentials{AccessToken: "new-token", RefreshToken: "new-refresh"}
 
-	if err := cm.Update(context.Background(), "p-1", creds); err != nil {
+	if err := cm.Update(context.Background(), "t-1", "p-1", creds); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -142,27 +142,27 @@ func TestCredentialManager_Update_PersistsAndCaches(t *testing.T) {
 
 func TestCredentialManager_Update_NilIsNoop(t *testing.T) {
 	store := &mockProviderStore{
-		onUpdateProviderCredentials: func(_ context.Context, _, _ string) error {
+		onUpdateProviderCredentials: func(_ context.Context, _, _, _ string) error {
 			t.Fatal("should not be called for nil creds")
 			return nil
 		},
 	}
 
 	cm := NewCredentialManager(store)
-	if err := cm.Update(context.Background(), "p-1", nil); err != nil {
+	if err := cm.Update(context.Background(), "t-1", "p-1", nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestCredentialManager_Update_DBError(t *testing.T) {
 	store := &mockProviderStore{
-		onUpdateProviderCredentials: func(_ context.Context, _, _ string) error {
+		onUpdateProviderCredentials: func(_ context.Context, _, _, _ string) error {
 			return errors.New("db error")
 		},
 	}
 
 	cm := NewCredentialManager(store)
-	err := cm.Update(context.Background(), "p-1", &provider.Credentials{AccessToken: "x"})
+	err := cm.Update(context.Background(), "t-1", "p-1", &provider.Credentials{AccessToken: "x"})
 	if err == nil {
 		t.Fatal("expected error")
 	}

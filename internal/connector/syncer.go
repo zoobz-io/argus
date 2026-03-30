@@ -122,7 +122,7 @@ func (s *Syncer) pollPath(ctx context.Context, wp *models.WatchedPath) error {
 
 	// Persist refreshed credentials if the provider returned them.
 	if updatedCreds != nil {
-		if err := s.creds.Update(ctx, wp.ProviderID, updatedCreds); err != nil {
+		if err := s.creds.Update(ctx, wp.TenantID, wp.ProviderID, updatedCreds); err != nil {
 			return fmt.Errorf("updating credentials: %w", err)
 		}
 	}
