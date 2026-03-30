@@ -202,19 +202,19 @@ func run() error {
 	defer func() { _ = ingestPub.Close() }()
 	log.Println("ingest queue publisher initialized")
 
-	// Audit Publisher: AuditSignal → argus:audit stream
-	auditStream := heraldredis.New("argus:audit", heraldredis.WithClient(redisClient))
-	auditPub := herald.NewPublisher(
-		auditStream,
-		events.AuditSignal,
-		events.AuditKey,
-		[]herald.Option[models.AuditEntry]{
-			herald.WithRetry[models.AuditEntry](3),
-			herald.WithBackoff[models.AuditEntry](3, 500*time.Millisecond),
+	// Domain Events Publisher: DomainEventSignal → argus:events stream
+	eventsStream := heraldredis.New("argus:events", heraldredis.WithClient(redisClient))
+	eventsPub := herald.NewPublisher(
+		eventsStream,
+		events.DomainEventSignal,
+		events.DomainEventKey,
+		[]herald.Option[models.DomainEvent]{
+			herald.WithRetry[models.DomainEvent](3),
+			herald.WithBackoff[models.DomainEvent](3, 500*time.Millisecond),
 		},
 	)
-	auditPub.Start()
-	defer func() { _ = auditPub.Close() }()
+	eventsPub.Start()
+	defer func() { _ = eventsPub.Close() }()
 	log.Println("audit publisher initialized")
 
 	// =========================================================================

@@ -4,7 +4,7 @@ import (
 	"github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/argus/api/transformers"
 	"github.com/zoobz-io/argus/api/wire"
-	"github.com/zoobz-io/argus/internal/audit"
+	"github.com/zoobz-io/argus/internal/event"
 	"github.com/zoobz-io/rocco"
 	"github.com/zoobz-io/sum"
 )
@@ -48,7 +48,7 @@ var createTag = rocco.POST[wire.TagCreateRequest, wire.TagResponse]("/tags", fun
 	if err != nil {
 		return wire.TagResponse{}, err
 	}
-	audit.Emit(r, "tag.created", "tag", tag.ID, tid, r.Identity.ID(), map[string]any{
+	event.Emit(r, "tag.created", "Tag created", "tag", tag.ID, tid, r.Identity.ID(), map[string]any{
 		"name": r.Body.Name,
 	})
 	return transformers.TagToResponse(tag), nil
@@ -70,7 +70,7 @@ var updateTag = rocco.PUT[wire.TagCreateRequest, wire.TagResponse]("/tags/{id}",
 	if err != nil {
 		return wire.TagResponse{}, ErrTagNotFound
 	}
-	audit.Emit(r, "tag.updated", "tag", tag.ID, tenantID(r.Identity), r.Identity.ID(), map[string]any{
+	event.Emit(r, "tag.updated", "Tag updated", "tag", tag.ID, tenantID(r.Identity), r.Identity.ID(), map[string]any{
 		"name": r.Body.Name,
 	})
 	return transformers.TagToResponse(tag), nil

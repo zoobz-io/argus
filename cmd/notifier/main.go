@@ -1,12 +1,14 @@
 // Package main is the entry point for the notification sidecar.
 //
-// The notifier subscribes to a single notification stream via herald, expands
-// each notification into per-subscriber fan-out items via streamz, and runs
-// each item through the notify pipeline (assign → index → hint).
+// The notifier subscribes to a single domain events stream via herald and
+// routes each event to: (1) the domain_events audit index (always),
+// (2) notification fan-out via streamz if subscriptions match, and
+// (3) webhook delivery for webhook subscriptions.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os/signal"
@@ -99,14 +101,14 @@ func run() error {
 	renderer := astqlpg.New()
 	subStore := stores.NewSubscriptions(db, renderer)
 	notifStore := stores.NewNotifications(searchProvider)
-	auditStore := stores.NewAudit(searchProvider)
+	domainEventsStore := stores.NewDomainEvents(searchProvider)
 
 	deliveryStore := stores.NewDeliveries(db, renderer)
 	hookStore := stores.NewHooks(db, renderer)
 
 	sum.Register[intcontracts.NotifySubscriptions](k, subStore)
 	sum.Register[intcontracts.NotifyIndexer](k, notifStore)
-	sum.Register[intcontracts.AuditIndexer](k, auditStore)
+	sum.Register[intcontracts.DomainEventIndexer](k, domainEventsStore)
 	sum.Register[intcontracts.NotifyHookLoader](k, hookStore)
 	sum.Register[intcontracts.NotifyDeliveryLogger](k, deliveryStore)
 
@@ -122,58 +124,77 @@ func run() error {
 	sum.Freeze(k)
 
 	// =========================================================================
-	// 5. Herald Subscriber (notification stream)
+	// 5. Herald Subscriber (unified domain events stream)
 	// =========================================================================
 
 	notifCfg := sum.MustUse[config.Notifier](sigCtx)
 	hostname := boot.Hostname()
 
-	notifStream := heraldredis.New("argus:notifications",
+	eventsStream := heraldredis.New("argus:events",
 		heraldredis.WithClient(redisClient),
 		heraldredis.WithGroup(notifCfg.ConsumerGroup),
 		heraldredis.WithConsumer(hostname),
 	)
-	notifSub := herald.NewSubscriber(
-		notifStream,
-		events.NotificationSignal,
-		events.NotificationKey,
-		[]herald.Option[models.Notification]{
-			herald.WithRetry[models.Notification](3),
+	eventsSub := herald.NewSubscriber(
+		eventsStream,
+		events.DomainEventSignal,
+		events.DomainEventKey,
+		[]herald.Option[models.DomainEvent]{
+			herald.WithRetry[models.DomainEvent](3),
 		},
 	)
-	notifSub.Start(sigCtx)
-	defer func() { _ = notifSub.Close() }()
-	log.Println("herald subscriber started")
+	eventsSub.Start(sigCtx)
+	defer func() { _ = eventsSub.Close() }()
+	log.Println("domain events subscriber started")
 
 	// =========================================================================
-	// 6. streamz: notification → []*FanOutItem expansion
+	// 6. streamz: DomainEvent → []*FanOutItem expansion
 	// =========================================================================
 
-	inputCh := make(chan streamz.Result[models.Notification])
+	inputCh := make(chan streamz.Result[models.DomainEvent])
 
-	// Work context: independent of signal — allows in-flight notifications
-	// to finish processing through the pipeline.
+	// Work context: independent of signal — allows in-flight processing to finish.
 	workCtx, workCancel := context.WithCancel(context.Background())
 	defer workCancel()
 
 	var drainer shutdown.Drainer
 
-	expander := streamz.NewAsyncMapper(func(ctx context.Context, notif models.Notification) ([]*notify.FanOutItem, error) {
-		subs, err := subStore.FindByTenantAndEventType(ctx, notif.TenantID, string(notif.Type))
+	expander := streamz.NewAsyncMapper(func(ctx context.Context, evt models.DomainEvent) ([]*notify.FanOutItem, error) {
+		// Always index the domain event (audit log).
+		if err := domainEventsStore.Index(ctx, &evt); err != nil {
+			capitan.Error(ctx, events.DomainEventIndexError,
+				events.DomainEventActionKey.Field(evt.Action),
+				events.DomainEventErrorKey.Field(err),
+			)
+			// Continue — indexing failure should not prevent notification delivery.
+		} else {
+			capitan.Info(ctx, events.DomainEventIndexed,
+				events.DomainEventActionKey.Field(evt.Action),
+			)
+		}
+
+		// Fan out to matching subscriptions.
+		subs, err := subStore.FindByTenantAndEventType(ctx, evt.TenantID, evt.Action)
 		if err != nil {
 			return nil, fmt.Errorf("finding subscriptions: %w", err)
 		}
+		if len(subs) == 0 {
+			return nil, nil
+		}
+
 		items := make([]*notify.FanOutItem, len(subs))
 		for i, sub := range subs {
-			n := notif.Clone()
+			n := materializeNotification(evt)
+			e := evt.Clone()
 			items[i] = &notify.FanOutItem{
 				Notification: &n,
 				Subscription: sub,
-				EventID:      notif.ID,
+				DomainEvent:  &e,
+				EventID:      evt.ID,
 			}
 		}
 		return items, nil
-	}).WithWorkers(4).WithName("notification-expander")
+	}).WithWorkers(notifCfg.FanOutWorkers).WithName("domain-event-expander")
 
 	expandedCh := expander.Process(workCtx, inputCh)
 
@@ -189,19 +210,25 @@ func run() error {
 			return
 		}
 		for _, item := range result.Value() {
-			var err error
-			switch item.Subscription.Channel {
-			case models.SubscriptionChannelWebhook:
-				_, err = webhookPipeline.Process(workCtx, item)
-			default:
-				_, err = inboxPipeline.Process(workCtx, item)
-			}
+			// Always run inbox pipeline first (assign + index + hint).
+			// This ensures Notification.ID, UserID, Status are set for all items.
+			processed, err := inboxPipeline.Process(workCtx, item)
 			if err != nil {
 				capitan.Error(workCtx, events.NotifierFanOutError,
 					events.NotifierTypeKey.Field(string(item.Notification.Type)),
 					events.NotifierErrorKey.Field(err),
 				)
 				continue
+			}
+			// For webhook subscriptions, additionally deliver via webhook.
+			if processed.Subscription.Channel == models.SubscriptionChannelWebhook {
+				if _, err := webhookPipeline.Process(workCtx, processed); err != nil {
+					capitan.Error(workCtx, events.NotifierFanOutError,
+						events.NotifierTypeKey.Field(string(item.Notification.Type)),
+						events.NotifierErrorKey.Field(err),
+					)
+					continue
+				}
 			}
 			capitan.Info(workCtx, events.NotifierFanOutCompleted,
 				events.NotifierTypeKey.Field(string(item.Notification.Type)),
@@ -211,64 +238,25 @@ func run() error {
 	_ = runner.Process(workCtx, expandedCh)
 
 	// =========================================================================
-	// 8. Herald hook: feed notifications into streamz input channel
+	// 8. Herald hook: feed domain events into streamz input channel
 	// =========================================================================
 
-	capitan.Hook(events.NotificationSignal, func(_ context.Context, e *capitan.Event) {
-		notif, ok := events.NotificationKey.From(e)
+	capitan.Hook(events.DomainEventSignal, func(_ context.Context, e *capitan.Event) {
+		evt, ok := events.DomainEventKey.From(e)
 		if !ok {
 			return
 		}
-		done := drainer.Track(notif.ID)
+		done := drainer.Track(evt.ID)
 		go func() {
 			defer done()
 			select {
-			case inputCh <- streamz.NewSuccess(notif):
+			case inputCh <- streamz.NewSuccess(evt):
 			case <-workCtx.Done():
 			}
 		}()
 	})
 
-	log.Println("notification fan-out pipeline registered")
-
-	// =========================================================================
-	// 8b. Herald Subscriber: audit stream → direct index
-	// =========================================================================
-
-	auditStream := heraldredis.New("argus:audit",
-		heraldredis.WithClient(redisClient),
-		heraldredis.WithGroup(notifCfg.ConsumerGroup),
-		heraldredis.WithConsumer(hostname),
-	)
-	auditSub := herald.NewSubscriber(
-		auditStream,
-		events.AuditSignal,
-		events.AuditKey,
-		[]herald.Option[models.AuditEntry]{
-			herald.WithRetry[models.AuditEntry](3),
-		},
-	)
-	auditSub.Start(sigCtx)
-	defer func() { _ = auditSub.Close() }()
-	log.Println("audit subscriber started")
-
-	capitan.Hook(events.AuditSignal, func(_ context.Context, e *capitan.Event) {
-		entry, ok := events.AuditKey.From(e)
-		if !ok {
-			return
-		}
-		if err := auditStore.Index(workCtx, &entry); err != nil {
-			capitan.Error(workCtx, events.AuditIndexError,
-				events.AuditActionKey.Field(entry.Action),
-				events.AuditErrorKey.Field(err),
-			)
-			return
-		}
-		capitan.Info(workCtx, events.AuditIndexed,
-			events.AuditActionKey.Field(entry.Action),
-		)
-	})
-	log.Println("audit indexer hook registered")
+	log.Println("domain event routing pipeline registered")
 
 	// =========================================================================
 	// 9. Herald Publisher: notify hints → argus:notify-hints stream
@@ -294,9 +282,9 @@ func run() error {
 
 	log.Println("notifier ready")
 	<-sigCtx.Done()
-	log.Println("shutting down — draining in-flight notifications...")
+	log.Println("shutting down — draining in-flight events...")
 
-	// Phase 1: Drain in-flight notification processing.
+	// Phase 1: Drain in-flight event processing.
 	drainer.Drain(notifCfg.DrainTimeout)
 
 	// Phase 2: Close input channel to signal streamz pipeline to drain.
@@ -305,12 +293,40 @@ func run() error {
 	// Phase 3: Cancel work context.
 	workCancel()
 
-	// Phase 4: Remove consumers from Redis groups.
+	// Phase 4: Remove consumer from Redis group.
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cleanupCancel()
-	shutdown.RemoveConsumer(cleanupCtx, redisClient, "argus:notifications", notifCfg.ConsumerGroup, hostname)
-	shutdown.RemoveConsumer(cleanupCtx, redisClient, "argus:audit", notifCfg.ConsumerGroup, hostname)
+	shutdown.RemoveConsumer(cleanupCtx, redisClient, "argus:events", notifCfg.ConsumerGroup, hostname)
 
 	log.Println("notifier stopped")
 	return nil
 }
+
+// materializeNotification builds a per-user Notification from a DomainEvent.
+// Convenience fields (DocumentID, VersionID, Message, Error) are extracted from
+// metadata for events that carry them; Metadata is passed through for the
+// discriminated union on the wire type.
+func materializeNotification(evt models.DomainEvent) models.Notification {
+	n := models.Notification{
+		TenantID: evt.TenantID,
+		Type:     models.NotificationType(evt.Action),
+		Message:  evt.Message,
+		Metadata: append(json.RawMessage(nil), evt.Metadata...),
+	}
+
+	// Extract convenience fields from metadata if present.
+	if evt.Metadata != nil {
+		var m struct {
+			DocumentID string `json:"document_id"`
+			VersionID  string `json:"version_id"`
+			Error      string `json:"error"`
+		}
+		if err := json.Unmarshal(evt.Metadata, &m); err == nil {
+			n.DocumentID = m.DocumentID
+			n.VersionID = m.VersionID
+			n.Error = m.Error
+		}
+	}
+	return n
+}
+

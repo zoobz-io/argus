@@ -22,7 +22,7 @@ type Stores struct {
 	Subscriptions      *Subscriptions
 	AdminSubscriptions *AdminSubscriptions
 	Notifications      *Notifications
-	Audit              *Audit
+	DomainEvents       *DomainEvents
 	Hooks              *Hooks
 	AdminHooks         *AdminHooks
 	Deliveries         *Deliveries
@@ -47,7 +47,7 @@ func New(db *sqlx.DB, renderer astql.Renderer, bucket grub.BucketProvider, searc
 		Subscriptions:         subs,
 		AdminSubscriptions:    &AdminSubscriptions{subs},
 		Notifications:         NewNotifications(searchProvider),
-		Audit:                 NewAudit(searchProvider),
+		DomainEvents:          NewDomainEvents(searchProvider),
 		Hooks:                 hooks,
 		AdminHooks:            &AdminHooks{Hooks: hooks, deliveries: deliveries},
 		Deliveries:            deliveries,

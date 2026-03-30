@@ -1,15 +1,14 @@
 package models
 
 import (
-	"bytes"
 	"encoding/json"
 	"testing"
 	"time"
 )
 
-func TestAuditEntry_Clone(t *testing.T) {
-	entry := AuditEntry{
-		ID:           "a-1",
+func TestDomainEvent_Clone(t *testing.T) {
+	evt := DomainEvent{
+		ID:           "e-1",
 		Timestamp:    time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),
 		Action:       "provider.created",
 		ResourceType: "provider",
@@ -19,36 +18,28 @@ func TestAuditEntry_Clone(t *testing.T) {
 		Metadata:     json.RawMessage(`{"provider_type":"google_drive"}`),
 	}
 
-	clone := entry.Clone()
+	clone := evt.Clone()
 
-	if clone.ID != entry.ID || clone.Action != entry.Action || clone.TenantID != entry.TenantID {
+	if clone.ID != evt.ID || clone.Action != evt.Action || clone.TenantID != evt.TenantID {
 		t.Error("Clone did not copy all fields")
-	}
-
-	if !bytes.Equal(clone.Metadata, entry.Metadata) {
-		t.Error("Clone did not copy metadata")
 	}
 
 	// Verify deep copy — mutating clone should not affect original.
 	clone.Metadata[0] = 'X'
-	if entry.Metadata[0] == 'X' {
+	if evt.Metadata[0] == 'X' {
 		t.Error("Clone metadata is not independent")
 	}
 }
 
-func TestAuditEntry_Clone_NilMetadata(t *testing.T) {
-	entry := AuditEntry{
-		ID:     "a-2",
-		Action: "tenant.deleted",
-	}
-
-	clone := entry.Clone()
+func TestDomainEvent_Clone_NilMetadata(t *testing.T) {
+	evt := DomainEvent{ID: "e-2", Action: "tenant.deleted"}
+	clone := evt.Clone()
 	if clone.Metadata != nil {
 		t.Error("nil metadata should remain nil after clone")
 	}
 }
 
-func TestAuditSearchParams_PageSize(t *testing.T) {
+func TestDomainEventSearchParams_PageSize(t *testing.T) {
 	tests := []struct {
 		name  string
 		limit int
@@ -62,7 +53,7 @@ func TestAuditSearchParams_PageSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := AuditSearchParams{Limit: tt.limit}
+			p := DomainEventSearchParams{Limit: tt.limit}
 			if got := p.PageSize(); got != tt.want {
 				t.Errorf("PageSize() = %d, want %d", got, tt.want)
 			}

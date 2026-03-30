@@ -6,21 +6,21 @@ import (
 	"github.com/zoobz-io/argus/models"
 )
 
-// AuditSignal is emitted when an auditable action occurs.
-// Herald publishes this to the audit stream for the notifier sidecar to consume.
-var AuditSignal = capitan.NewSignal("argus.audit", "Audit event")
+// DomainEventSignal is emitted when any domain action occurs (user or system).
+// Herald publishes this to the unified events stream for the notifier sidecar.
+var DomainEventSignal = capitan.NewSignal("argus.domain_event", "Domain event")
 
-// AuditKey carries the AuditEntry payload on the signal.
-var AuditKey = capitan.NewKey[models.AuditEntry]("audit", "models.AuditEntry")
+// DomainEventKey carries the DomainEvent payload on the signal.
+var DomainEventKey = capitan.NewKey[models.DomainEvent]("domain_event", "models.DomainEvent")
 
-// Audit sidecar operational signals.
+// Domain event sidecar operational signals.
 var (
-	AuditIndexed    = capitan.NewSignal("argus.audit.indexed", "Audit entry indexed in search")
-	AuditIndexError = capitan.NewSignal("argus.audit.index.error", "Failed to index audit entry")
+	DomainEventIndexed    = capitan.NewSignal("argus.domain_event.indexed", "Domain event indexed in search")
+	DomainEventIndexError = capitan.NewSignal("argus.domain_event.index.error", "Failed to index domain event")
 )
 
-// Audit field keys for signal emission.
+// Domain event field keys for signal emission.
 var (
-	AuditActionKey = capitan.NewStringKey("audit_action")
-	AuditErrorKey  = capitan.NewErrorKey("error")
+	DomainEventActionKey = capitan.NewStringKey("domain_event_action")
+	DomainEventErrorKey  = capitan.NewErrorKey("error")
 )

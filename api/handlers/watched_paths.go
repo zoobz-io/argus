@@ -4,7 +4,7 @@ import (
 	"github.com/zoobz-io/argus/api/contracts"
 	"github.com/zoobz-io/argus/api/transformers"
 	"github.com/zoobz-io/argus/api/wire"
-	"github.com/zoobz-io/argus/internal/audit"
+	"github.com/zoobz-io/argus/internal/event"
 	"github.com/zoobz-io/rocco"
 	"github.com/zoobz-io/sum"
 )
@@ -46,7 +46,7 @@ var createWatchedPath = rocco.POST[wire.WatchedPathCreateRequest, wire.WatchedPa
 	if err != nil {
 		return wire.WatchedPathResponse{}, err
 	}
-	audit.Emit(r, "watched_path.created", "watched_path", wp.ID, tid, r.Identity.ID(), map[string]any{
+	event.Emit(r, "watched_path.created", "Watched path created", "watched_path", wp.ID, tid, r.Identity.ID(), map[string]any{
 		"provider_id": r.Body.ProviderID,
 		"path":        r.Body.Path,
 	})
@@ -65,7 +65,7 @@ var updateWatchedPath = rocco.PUT[wire.WatchedPathCreateRequest, wire.WatchedPat
 	if err != nil {
 		return wire.WatchedPathResponse{}, ErrWatchedPathNotFound
 	}
-	audit.Emit(r, "watched_path.updated", "watched_path", wp.ID, tenantID(r.Identity), r.Identity.ID(), map[string]any{
+	event.Emit(r, "watched_path.updated", "Watched path updated", "watched_path", wp.ID, tenantID(r.Identity), r.Identity.ID(), map[string]any{
 		"path": r.Body.Path,
 	})
 	return transformers.WatchedPathToResponse(wp), nil

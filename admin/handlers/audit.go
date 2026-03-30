@@ -17,19 +17,19 @@ var listAdminAuditLog = rocco.GET[rocco.NoBody, wire.AuditListResponse]("/audit"
 
 	params := adminAuditSearchFromQuery(r.Params)
 
-	result, err := store.Search(r, params)
+	result, err := store.SearchAll(r, params)
 	if err != nil {
 		return wire.AuditListResponse{}, err
 	}
-	return transformers.AuditEntriesToListResponse(result), nil
+	return transformers.DomainEventsToListResponse(result), nil
 }).
 	WithSummary("List audit log (admin)").
 	WithTags("audit").
 	WithQueryParams("action", "resource_type", "actor_id", "tenant_id", "from", "to", "offset", "limit").
 	WithAuthentication()
 
-func adminAuditSearchFromQuery(params *rocco.Params) models.AuditSearchParams {
-	p := models.AuditSearchParams{
+func adminAuditSearchFromQuery(params *rocco.Params) models.DomainEventSearchParams {
+	p := models.DomainEventSearchParams{
 		Limit: models.DefaultPageSize,
 	}
 	if v := params.Query["action"]; v != "" {

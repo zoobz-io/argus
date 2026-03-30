@@ -4,7 +4,7 @@ import (
 	"github.com/zoobz-io/argus/admin/contracts"
 	"github.com/zoobz-io/argus/admin/transformers"
 	"github.com/zoobz-io/argus/admin/wire"
-	"github.com/zoobz-io/argus/internal/audit"
+	"github.com/zoobz-io/argus/internal/event"
 	"github.com/zoobz-io/rocco"
 	"github.com/zoobz-io/sum"
 )
@@ -44,7 +44,7 @@ var createTenant = rocco.POST[wire.AdminTenantCreateRequest, wire.AdminTenantRes
 	if err != nil {
 		return wire.AdminTenantResponse{}, err
 	}
-	audit.Emit(r, "tenant.created", "tenant", tenant.ID, tenant.ID, r.Identity.ID(), map[string]any{
+	event.Emit(r, "tenant.created", "Tenant created", "tenant", tenant.ID, tenant.ID, r.Identity.ID(), map[string]any{
 		"name": r.Body.Name,
 		"slug": r.Body.Slug,
 	})
@@ -63,7 +63,7 @@ var updateTenant = rocco.PUT[wire.AdminTenantCreateRequest, wire.AdminTenantResp
 	if err != nil {
 		return wire.AdminTenantResponse{}, ErrTenantNotFound
 	}
-	audit.Emit(r, "tenant.updated", "tenant", tenant.ID, tenant.ID, r.Identity.ID(), map[string]any{
+	event.Emit(r, "tenant.updated", "Tenant updated", "tenant", tenant.ID, tenant.ID, r.Identity.ID(), map[string]any{
 		"name": r.Body.Name,
 		"slug": r.Body.Slug,
 	})
@@ -81,7 +81,7 @@ var deleteTenant = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/tenants/{id}", fun
 	if err := store.DeleteTenant(r, id); err != nil {
 		return rocco.NoBody{}, ErrTenantNotFound
 	}
-	audit.Emit(r, "tenant.deleted", "tenant", id, id, r.Identity.ID(), nil)
+	event.Emit(r, "tenant.deleted", "Tenant deleted", "tenant", id, id, r.Identity.ID(), nil)
 	return rocco.NoBody{}, nil
 }).
 	WithSummary("Delete tenant").

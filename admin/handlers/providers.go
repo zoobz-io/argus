@@ -5,7 +5,7 @@ import (
 	"github.com/zoobz-io/argus/admin/transformers"
 	"github.com/zoobz-io/argus/admin/wire"
 	apiwire "github.com/zoobz-io/argus/api/wire"
-	"github.com/zoobz-io/argus/internal/audit"
+	"github.com/zoobz-io/argus/internal/event"
 	"github.com/zoobz-io/rocco"
 	"github.com/zoobz-io/sum"
 )
@@ -58,10 +58,15 @@ var createAdminProvider = rocco.POST[apiwire.ProviderCreateRequest, wire.AdminPr
 var deleteAdminProvider = rocco.DELETE[rocco.NoBody, rocco.NoBody]("/providers/{id}", func(r *rocco.Request[rocco.NoBody]) (rocco.NoBody, error) {
 	id := pathID(r.Params, "id")
 	store := sum.MustUse[contracts.Providers](r)
+	// Load provider before deletion to capture tenant ID for the audit event.
+	p, err := store.GetProvider(r, id)
+	if err != nil {
+		return rocco.NoBody{}, ErrProviderNotFound
+	}
 	if err := store.DeleteProvider(r, id); err != nil {
 		return rocco.NoBody{}, ErrProviderNotFound
 	}
-	audit.Emit(r, "provider.deleted", "provider", id, "", r.Identity.ID(), nil)
+	event.Emit(r, "provider.deleted", "Provider deleted", "provider", id, p.TenantID, r.Identity.ID(), nil)
 	return rocco.NoBody{}, nil
 }).
 	WithSummary("Delete provider").

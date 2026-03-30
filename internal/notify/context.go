@@ -11,7 +11,8 @@ import "github.com/zoobz-io/argus/models"
 type FanOutItem struct {
 	Notification       *models.Notification
 	Subscription       *models.Subscription
-	WebhookHook        *models.Hook // Loaded by sign stage, reused by deliver stage.
+	DomainEvent        *models.DomainEvent // Source event — used by webhook sign stage.
+	WebhookHook        *models.Hook        // Loaded by sign stage, reused by deliver stage.
 	WebhookDeliveryErr *string
 	EventID            string
 	WebhookSignature   string
@@ -32,6 +33,10 @@ func (f *FanOutItem) Clone() *FanOutItem {
 	if f.Subscription != nil {
 		s := f.Subscription.Clone()
 		c.Subscription = &s
+	}
+	if f.DomainEvent != nil {
+		e := f.DomainEvent.Clone()
+		c.DomainEvent = &e
 	}
 	return c
 }

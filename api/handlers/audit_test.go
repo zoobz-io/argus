@@ -18,12 +18,12 @@ import (
 func TestListAuditLog_Success(t *testing.T) {
 	ts := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
 	mock := &argustest.MockAuditLog{
-		OnSearch: func(_ context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			if params.TenantID != "tenant-1" {
 				t.Errorf("expected tenant-1, got %q", params.TenantID)
 			}
-			return &models.OffsetResult[models.AuditEntry]{
-				Items: []*models.AuditEntry{{
+			return &models.OffsetResult[models.DomainEvent]{
+				Items: []*models.DomainEvent{{
 					ID:           "a-1",
 					Timestamp:    ts,
 					Action:       "provider.created",
@@ -58,7 +58,7 @@ func TestListAuditLog_Success(t *testing.T) {
 
 func TestListAuditLog_WithQueryParams(t *testing.T) {
 	mock := &argustest.MockAuditLog{
-		OnSearch: func(_ context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			if params.Action != "provider.created" {
 				t.Errorf("Action = %q, want provider.created", params.Action)
 			}
@@ -74,7 +74,7 @@ func TestListAuditLog_WithQueryParams(t *testing.T) {
 			if params.Limit != 10 {
 				t.Errorf("Limit = %d, want 10", params.Limit)
 			}
-			return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}, Total: 0}, nil
+			return &models.OffsetResult[models.DomainEvent]{Items: []*models.DomainEvent{}, Total: 0}, nil
 		},
 	}
 	engine := argustest.SetupAPIEngine(t, All(),
@@ -87,7 +87,7 @@ func TestListAuditLog_WithQueryParams(t *testing.T) {
 
 func TestListAuditLog_Error(t *testing.T) {
 	mock := &argustest.MockAuditLog{
-		OnSearch: func(_ context.Context, _ models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+		OnSearch: func(_ context.Context, _ models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			return nil, fmt.Errorf("search error")
 		},
 	}

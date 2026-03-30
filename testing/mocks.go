@@ -52,22 +52,22 @@ var (
 
 // MockAuditLog satisfies api/contracts.AuditLog.
 type MockAuditLog struct {
-	OnSearch func(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error)
+	OnSearch func(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error)
 }
 
-func (m *MockAuditLog) Search(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
+func (m *MockAuditLog) Search(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 	if m.OnSearch != nil { return m.OnSearch(ctx, params) }
-	return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}}, nil
+	return &models.OffsetResult[models.DomainEvent]{Items: []*models.DomainEvent{}}, nil
 }
 
 // MockAdminAuditLog satisfies admin/contracts.AuditLog.
 type MockAdminAuditLog struct {
-	OnSearch func(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error)
+	OnSearchAll func(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error)
 }
 
-func (m *MockAdminAuditLog) Search(ctx context.Context, params models.AuditSearchParams) (*models.OffsetResult[models.AuditEntry], error) {
-	if m.OnSearch != nil { return m.OnSearch(ctx, params) }
-	return &models.OffsetResult[models.AuditEntry]{Items: []*models.AuditEntry{}}, nil
+func (m *MockAdminAuditLog) SearchAll(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+	if m.OnSearchAll != nil { return m.OnSearchAll(ctx, params) }
+	return &models.OffsetResult[models.DomainEvent]{Items: []*models.DomainEvent{}}, nil
 }
 
 // MockTenants satisfies both api/contracts.Tenants and admin/contracts.Tenants.

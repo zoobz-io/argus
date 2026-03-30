@@ -60,13 +60,19 @@ func TestWebhookSign_Success(t *testing.T) {
 		t.Errorf("signature mismatch: got %s, want %s", result.WebhookSignature, expected)
 	}
 
-	// Verify payload is valid JSON of the notification.
-	var n models.Notification
-	if err := json.Unmarshal(result.WebhookPayload, &n); err != nil {
+	// Verify payload is valid JSON with notification context.
+	var p struct {
+		Notification *webhookNotif `json:"notification"`
+	}
+	if err := json.Unmarshal(result.WebhookPayload, &p); err != nil {
 		t.Fatalf("payload is not valid JSON: %v", err)
 	}
-	if n.ID != "n-1" {
-		t.Errorf("payload notification ID = %s, want n-1", n.ID)
+	if p.Notification == nil || p.Notification.ID != "n-1" {
+		id := ""
+		if p.Notification != nil {
+			id = p.Notification.ID
+		}
+		t.Errorf("payload notification ID = %s, want n-1", id)
 	}
 }
 
@@ -171,12 +177,18 @@ func TestWebhookSign_HookSetsFields(t *testing.T) {
 		t.Errorf("hook URL = %s", result.WebhookHook.URL)
 	}
 
-	// Payload should be valid JSON containing the notification.
-	var n models.Notification
-	if err := json.Unmarshal(result.WebhookPayload, &n); err != nil {
+	// Payload should be valid JSON with notification context.
+	var p struct {
+		Notification *webhookNotif `json:"notification"`
+	}
+	if err := json.Unmarshal(result.WebhookPayload, &p); err != nil {
 		t.Fatalf("payload is not valid JSON: %v", err)
 	}
-	if n.ID != "n-2" {
-		t.Errorf("payload notification ID = %s, want n-2", n.ID)
+	if p.Notification == nil || p.Notification.ID != "n-2" {
+		id := ""
+		if p.Notification != nil {
+			id = p.Notification.ID
+		}
+		t.Errorf("payload notification ID = %s, want n-2", id)
 	}
 }

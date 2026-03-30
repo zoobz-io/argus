@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/zoobz-io/argus/models"
@@ -16,10 +17,13 @@ var validNotificationStatuses = []string{
 }
 
 // NotificationResponse is the public API response for a notification.
+//
+//nolint:govet // fieldalignment: readability over alignment for wire types
 type NotificationResponse struct {
 	CreatedAt  time.Time                `json:"created_at" description:"Creation timestamp"`
-	Type       models.NotificationType  `json:"type" description:"Notification type" example:"ingest.completed"`
+	Type       models.NotificationType  `json:"type" description:"Event type" example:"ingest.completed" discriminator:"metadata"`
 	Status     models.NotificationStatus `json:"status" description:"Read status" example:"unread"`
+	Metadata   json.RawMessage          `json:"metadata,omitempty" description:"Event-specific metadata" discriminate:"ProviderCreatedMeta,ProviderUpdatedMeta,ProviderConnectedMeta,ProviderDeletedMeta,DocumentIngestedMeta,WatchedPathCreatedMeta,WatchedPathUpdatedMeta,TopicCreatedMeta,TopicUpdatedMeta,TagCreatedMeta,TagUpdatedMeta,TenantCreatedMeta,TenantUpdatedMeta,TenantDeletedMeta,IngestStageMeta,IngestFailedMeta"`
 	ID         string                   `json:"id" description:"Notification ID" example:"550e8400-e29b-41d4-a716-446655440000"`
 	DocumentID string                   `json:"document_id,omitempty" description:"Related document ID"`
 	VersionID  string                   `json:"version_id,omitempty" description:"Related version ID"`
@@ -37,9 +41,14 @@ func (n *NotificationResponse) OnSend(ctx context.Context) error {
 	return nil
 }
 
-// Clone returns a copy of the response.
+// Clone returns a deep copy of the response.
 func (n NotificationResponse) Clone() NotificationResponse {
-	return n
+	c := n
+	if n.Metadata != nil {
+		c.Metadata = make(json.RawMessage, len(n.Metadata))
+		copy(c.Metadata, n.Metadata)
+	}
+	return c
 }
 
 // NotificationListResponse is the public API response for a paginated notification list.

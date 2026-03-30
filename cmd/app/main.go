@@ -168,7 +168,7 @@ func run() error {
 	sum.Register[apicontracts.Users](k, allStores.Users)
 	sum.Register[apicontracts.Subscriptions](k, allStores.Subscriptions)
 	sum.Register[apicontracts.Notifications](k, allStores.Notifications)
-	sum.Register[apicontracts.AuditLog](k, allStores.Audit)
+	sum.Register[apicontracts.AuditLog](k, allStores.DomainEvents)
 	sum.Register[apicontracts.Hooks](k, allStores.Hooks)
 	sum.Register[apicontracts.Deliveries](k, allStores.Deliveries)
 
@@ -183,7 +183,7 @@ func run() error {
 	sum.Register[admincontracts.Tags](k, allStores.Tags)
 	sum.Register[admincontracts.Users](k, allStores.Users)
 	sum.Register[admincontracts.Subscriptions](k, allStores.AdminSubscriptions)
-	sum.Register[admincontracts.AuditLog](k, allStores.Audit)
+	sum.Register[admincontracts.AuditLog](k, allStores.DomainEvents)
 	sum.Register[admincontracts.Hooks](k, allStores.AdminHooks)
 
 	// Internal contracts — enqueuer needs versions, documents, jobs.
@@ -295,20 +295,20 @@ func run() error {
 	defer func() { _ = notifyHintSub.Close() }()
 	log.Println("notify hints subscriber initialized")
 
-	// Herald Publisher: AuditSignal → argus:audit stream
-	auditStream := heraldredis.New("argus:audit", heraldredis.WithClient(redisClient))
-	auditPub := herald.NewPublisher(
-		auditStream,
-		events.AuditSignal,
-		events.AuditKey,
-		[]herald.Option[models.AuditEntry]{
-			herald.WithRetry[models.AuditEntry](3),
-			herald.WithBackoff[models.AuditEntry](3, 500*time.Millisecond),
+	// Herald Publisher: DomainEventSignal → argus:events stream
+	eventsStream := heraldredis.New("argus:events", heraldredis.WithClient(redisClient))
+	eventsPub := herald.NewPublisher(
+		eventsStream,
+		events.DomainEventSignal,
+		events.DomainEventKey,
+		[]herald.Option[models.DomainEvent]{
+			herald.WithRetry[models.DomainEvent](3),
+			herald.WithBackoff[models.DomainEvent](3, 500*time.Millisecond),
 		},
 	)
-	auditPub.Start()
-	defer func() { _ = auditPub.Close() }()
-	log.Println("audit publisher initialized")
+	eventsPub.Start()
+	defer func() { _ = eventsPub.Close() }()
+	log.Println("domain events publisher initialized")
 
 	// =========================================================================
 	// 8. Register Handlers and Start Server

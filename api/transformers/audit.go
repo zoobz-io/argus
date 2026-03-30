@@ -5,8 +5,8 @@ import (
 	"github.com/zoobz-io/argus/models"
 )
 
-// AuditEntryToResponse transforms an AuditEntry model to an API response.
-func AuditEntryToResponse(e *models.AuditEntry) wire.AuditEntryResponse {
+// DomainEventToResponse transforms a DomainEvent model to an API response.
+func DomainEventToResponse(e *models.DomainEvent) wire.AuditEntryResponse {
 	return wire.AuditEntryResponse{
 		ID:           e.ID,
 		Timestamp:    e.Timestamp,
@@ -18,11 +18,11 @@ func AuditEntryToResponse(e *models.AuditEntry) wire.AuditEntryResponse {
 	}
 }
 
-// AuditEntriesToListResponse transforms an OffsetResult of audit entries to a list response.
-func AuditEntriesToListResponse(result *models.OffsetResult[models.AuditEntry]) wire.AuditListResponse {
+// DomainEventsToListResponse transforms an OffsetResult of domain events to a list response.
+func DomainEventsToListResponse(result *models.OffsetResult[models.DomainEvent]) wire.AuditListResponse {
 	entries := make([]wire.AuditEntryResponse, len(result.Items))
 	for i, e := range result.Items {
-		entries[i] = AuditEntryToResponse(e)
+		entries[i] = DomainEventToResponse(e)
 	}
 	return wire.AuditListResponse{
 		Entries: entries,
