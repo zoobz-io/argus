@@ -8,6 +8,6 @@ import (
 
 // AuditLog defines the contract for audit log operations on the admin API surface.
 type AuditLog interface {
-	// Search queries domain events across tenants.
-	Search(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error)
+	// SearchAll queries domain events across all tenants.
+	SearchAll(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error)
 }

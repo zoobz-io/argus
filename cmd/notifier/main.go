@@ -210,19 +210,25 @@ func run() error {
 			return
 		}
 		for _, item := range result.Value() {
-			var err error
-			switch item.Subscription.Channel {
-			case models.SubscriptionChannelWebhook:
-				_, err = webhookPipeline.Process(workCtx, item)
-			default:
-				_, err = inboxPipeline.Process(workCtx, item)
-			}
+			// Always run inbox pipeline first (assign + index + hint).
+			// This ensures Notification.ID, UserID, Status are set for all items.
+			processed, err := inboxPipeline.Process(workCtx, item)
 			if err != nil {
 				capitan.Error(workCtx, events.NotifierFanOutError,
 					events.NotifierTypeKey.Field(string(item.Notification.Type)),
 					events.NotifierErrorKey.Field(err),
 				)
 				continue
+			}
+			// For webhook subscriptions, additionally deliver via webhook.
+			if processed.Subscription.Channel == models.SubscriptionChannelWebhook {
+				if _, err := webhookPipeline.Process(workCtx, processed); err != nil {
+					capitan.Error(workCtx, events.NotifierFanOutError,
+						events.NotifierTypeKey.Field(string(item.Notification.Type)),
+						events.NotifierErrorKey.Field(err),
+					)
+					continue
+				}
 			}
 			capitan.Info(workCtx, events.NotifierFanOutCompleted,
 				events.NotifierTypeKey.Field(string(item.Notification.Type)),
@@ -304,8 +310,8 @@ func materializeNotification(evt models.DomainEvent) models.Notification {
 	n := models.Notification{
 		TenantID: evt.TenantID,
 		Type:     models.NotificationType(evt.Action),
-		Metadata: evt.Metadata,
 		Message:  evt.Message,
+		Metadata: append(json.RawMessage(nil), evt.Metadata...),
 	}
 
 	// Extract convenience fields from metadata if present.

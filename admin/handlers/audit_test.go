@@ -18,7 +18,7 @@ import (
 func TestAdminListAuditLog_Success(t *testing.T) {
 	ts := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+		OnSearchAll: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			return &models.OffsetResult[models.DomainEvent]{
 				Items: []*models.DomainEvent{{
 					ID:           "a-1",
@@ -52,7 +52,7 @@ func TestAdminListAuditLog_Success(t *testing.T) {
 
 func TestAdminListAuditLog_WithTenantFilter(t *testing.T) {
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+		OnSearchAll: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			if params.TenantID != "t-1" {
 				t.Errorf("TenantID = %q, want t-1", params.TenantID)
 			}
@@ -72,7 +72,7 @@ func TestAdminListAuditLog_WithTenantFilter(t *testing.T) {
 
 func TestAdminListAuditLog_AllFilters(t *testing.T) {
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+		OnSearchAll: func(_ context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			if params.ResourceType != "provider" {
 				t.Errorf("ResourceType = %q, want provider", params.ResourceType)
 			}
@@ -104,7 +104,7 @@ func TestAdminListAuditLog_AllFilters(t *testing.T) {
 
 func TestAdminListAuditLog_Error(t *testing.T) {
 	mock := &argustest.MockAdminAuditLog{
-		OnSearch: func(_ context.Context, _ models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+		OnSearchAll: func(_ context.Context, _ models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 			return nil, fmt.Errorf("search error")
 		},
 	}

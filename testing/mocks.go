@@ -62,11 +62,11 @@ func (m *MockAuditLog) Search(ctx context.Context, params models.DomainEventSear
 
 // MockAdminAuditLog satisfies admin/contracts.AuditLog.
 type MockAdminAuditLog struct {
-	OnSearch func(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error)
+	OnSearchAll func(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error)
 }
 
-func (m *MockAdminAuditLog) Search(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
-	if m.OnSearch != nil { return m.OnSearch(ctx, params) }
+func (m *MockAdminAuditLog) SearchAll(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+	if m.OnSearchAll != nil { return m.OnSearchAll(ctx, params) }
 	return &models.OffsetResult[models.DomainEvent]{Items: []*models.DomainEvent{}}, nil
 }
 

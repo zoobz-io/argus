@@ -78,7 +78,7 @@ func TestAudit_Search_NoFilters(t *testing.T) {
 	}
 
 	store := newTestDomainEvents(t, mock)
-	result, err := store.Search(context.Background(), models.DomainEventSearchParams{Limit: 20})
+	result, err := store.SearchAll(context.Background(), models.DomainEventSearchParams{Limit: 20})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestAudit_Search_Error(t *testing.T) {
 	}
 
 	store := newTestDomainEvents(t, mock)
-	_, err := store.Search(context.Background(), models.DomainEventSearchParams{Limit: 20})
+	_, err := store.SearchAll(context.Background(), models.DomainEventSearchParams{Limit: 20})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -149,7 +149,7 @@ func TestAudit_Search_WithMetadata(t *testing.T) {
 	}
 
 	store := newTestDomainEvents(t, mock)
-	result, err := store.Search(context.Background(), models.DomainEventSearchParams{Limit: 20})
+	result, err := store.SearchAll(context.Background(), models.DomainEventSearchParams{Limit: 20})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

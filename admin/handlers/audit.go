@@ -17,7 +17,7 @@ var listAdminAuditLog = rocco.GET[rocco.NoBody, wire.AuditListResponse]("/audit"
 
 	params := adminAuditSearchFromQuery(r.Params)
 
-	result, err := store.Search(r, params)
+	result, err := store.SearchAll(r, params)
 	if err != nil {
 		return wire.AuditListResponse{}, err
 	}

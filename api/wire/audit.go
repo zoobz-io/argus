@@ -64,7 +64,9 @@ func (r AuditListResponse) Clone() AuditListResponse {
 	c := r
 	if r.Entries != nil {
 		c.Entries = make([]AuditEntryResponse, len(r.Entries))
-		copy(c.Entries, r.Entries)
+		for i, e := range r.Entries {
+			c.Entries[i] = e.Clone()
+		}
 	}
 	return c
 }

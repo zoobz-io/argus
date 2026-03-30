@@ -30,8 +30,20 @@ func (s *DomainEvents) Index(ctx context.Context, event *models.DomainEvent) err
 	return s.index.Index(ctx, event.ID, event)
 }
 
-// Search queries domain events with optional filters.
+// Search queries domain events scoped to a tenant. TenantID is required.
 func (s *DomainEvents) Search(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+	if params.TenantID == "" {
+		return nil, fmt.Errorf("tenant_id is required for scoped search")
+	}
+	return s.search(ctx, params)
+}
+
+// SearchAll queries domain events across all tenants (admin use only).
+func (s *DomainEvents) SearchAll(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
+	return s.search(ctx, params)
+}
+
+func (s *DomainEvents) search(ctx context.Context, params models.DomainEventSearchParams) (*models.OffsetResult[models.DomainEvent], error) {
 	var filters []lucene.Query
 
 	if params.TenantID != "" {
