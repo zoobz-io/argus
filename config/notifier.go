@@ -1,16 +1,23 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // Notifier holds notification sidecar configuration.
 type Notifier struct {
-	ConsumerGroup string `env:"APP_NOTIFIER_CONSUMER_GROUP" default:"argus-notifier"`
+	ConsumerGroup string        `env:"APP_NOTIFIER_CONSUMER_GROUP" default:"argus-notifier"`
+	DrainTimeout  time.Duration `env:"APP_NOTIFIER_DRAIN_TIMEOUT" default:"30s"`
 }
 
 // Validate checks that the configuration is valid.
 func (c Notifier) Validate() error {
 	if c.ConsumerGroup == "" {
 		return errors.New("consumer group is required")
+	}
+	if c.DrainTimeout <= 0 {
+		return errors.New("drain timeout must be positive")
 	}
 	return nil
 }
