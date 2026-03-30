@@ -36,7 +36,6 @@ var (
 	_ apicontracts.Tags                   = (*MockTags)(nil)
 	_ admincontracts.Users                = (*MockUsers)(nil)
 	_ apicontracts.Users                  = (*MockUsers)(nil)
-	_ apicontracts.Ingest                 = (*MockIngest)(nil)
 	_ apicontracts.IngestEnqueuer         = (*MockIngestEnqueuer)(nil)
 	_ apicontracts.JobReader              = (*MockJobReader)(nil)
 	_ apicontracts.QueryEmbedder          = (*MockQueryEmbedder)(nil)
@@ -354,16 +353,6 @@ func (m *MockUsers) ListUsers(ctx context.Context, page models.OffsetPage) (*mod
 func (m *MockUsers) ListUsersByTenant(ctx context.Context, tenantID string, page models.OffsetPage) (*models.OffsetResult[models.User], error) {
 	if m.OnListUsersByTenant != nil { return m.OnListUsersByTenant(ctx, tenantID, page) }
 	return &models.OffsetResult[models.User]{Items: []*models.User{}}, nil
-}
-
-// MockIngest satisfies api/contracts.Ingest.
-type MockIngest struct {
-	OnIngest func(ctx context.Context, jobID, versionID string) error
-}
-
-func (m *MockIngest) Ingest(ctx context.Context, jobID, versionID string) error {
-	if m.OnIngest != nil { return m.OnIngest(ctx, jobID, versionID) }
-	return nil
 }
 
 // MockIngestEnqueuer satisfies api/contracts.IngestEnqueuer.

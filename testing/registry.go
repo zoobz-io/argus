@@ -48,9 +48,6 @@ func WithAPITopics(m *MockTopics) RegistryOption {
 func WithAPITags(m *MockTags) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.Tags](k, m) }
 }
-func WithAPIIngest(m *MockIngest) RegistryOption {
-	return func(k sum.Key) { sum.Register[apicontracts.Ingest](k, m) }
-}
 func WithAPIIngestEnqueuer(m *MockIngestEnqueuer) RegistryOption {
 	return func(k sum.Key) { sum.Register[apicontracts.IngestEnqueuer](k, m) }
 }

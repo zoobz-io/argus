@@ -140,9 +140,6 @@ func InitStores(ctx context.Context, infra *Infra) error {
 	sum.Register[intcontracts.Embedder](k, &stubEmbedder{dimensions: 1536})
 
 	// Pipelines.
-	pipeline := ingest.New()
-	sum.Register[apicontracts.Ingest](k, pipeline)
-
 	vocabPipeline := vocabulary.New()
 	sum.Register[apicontracts.Vocabulary](k, vocabPipeline)
 	sum.Register[admincontracts.Vocabulary](k, vocabPipeline)
