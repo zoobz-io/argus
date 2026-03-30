@@ -129,6 +129,11 @@ func run() error {
 	}
 	capitan.Emit(ctx, events.StartupOpenSearchConnected)
 
+	osCfg := sum.MustUse[config.OpenSearch](ctx)
+	if err = boot.EnsureIndices(ctx, osCfg.Addr); err != nil {
+		return fmt.Errorf("ensuring opensearch indices: %w", err)
+	}
+
 	classifyConn, classifyClient, err := boot.Classify(ctx)
 	if err != nil {
 		return err

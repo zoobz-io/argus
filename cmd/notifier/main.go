@@ -84,6 +84,11 @@ func run() error {
 		return err
 	}
 
+	osCfg := sum.MustUse[config.OpenSearch](ctx)
+	if err := boot.EnsureIndices(ctx, osCfg.Addr); err != nil {
+		return fmt.Errorf("ensuring opensearch indices: %w", err)
+	}
+
 	// =========================================================================
 	// 3. Create Stores and Register Internal Contracts
 	// =========================================================================
